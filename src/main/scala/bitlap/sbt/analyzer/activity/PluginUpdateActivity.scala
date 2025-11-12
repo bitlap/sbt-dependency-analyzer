@@ -62,7 +62,7 @@ final class PluginUpdateActivity extends BaseProjectActivity {
       version.presentation
     )
     val partStyle = s"margin-top: ${JBUI.scale(8)}px;"
-    val content = SbtDependencyAnalyzerBundle.message(
+    val content   = SbtDependencyAnalyzerBundle.message(
       "analyzer.notification.updated.text",
       partStyle,
       latestChangeNotes,

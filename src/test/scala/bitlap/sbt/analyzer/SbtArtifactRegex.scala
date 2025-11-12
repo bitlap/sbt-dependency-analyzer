@@ -28,7 +28,7 @@ class SbtArtifactRegex extends AnyFlatSpec {
     val native0_3   = "zio_native0.5_3"
 
     val artifactPattern = DependencyUtils.SCALA_VERSION_PATTERN
-    val res = List(
+    val res             = List(
       scala211,
       scala212,
       scala213,

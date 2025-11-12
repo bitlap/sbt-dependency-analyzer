@@ -21,9 +21,8 @@ abstract class BaseRefreshDependenciesAction extends DumbAwareAction() {
     val systemIds        = new util.ArrayList[ProjectSystemId]
     val externalSystemId = e.getData(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID)
     if (externalSystemId == null)
-      ExternalSystemManager.EP_NAME.forEachExtensionSafe((manager: ExternalSystemManager[?, ?, ?, ?, ?]) =>
-        systemIds.add(manager.getSystemId)
-      )
+      ExternalSystemManager.EP_NAME
+        .forEachExtensionSafe((manager: ExternalSystemManager[?, ?, ?, ?, ?]) => systemIds.add(manager.getSystemId))
     else systemIds.add(externalSystemId)
     systemIds
   }
