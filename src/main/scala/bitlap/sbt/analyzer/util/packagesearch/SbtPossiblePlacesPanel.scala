@@ -139,7 +139,7 @@ private class SbtPossiblePlacesPanel(
   }
 
   private def createEditor(): Editor = {
-    val viewer = EditorFactory.getInstance.createViewer(EditorFactory.getInstance().createDocument(""))
+    val viewer            = EditorFactory.getInstance.createViewer(EditorFactory.getInstance().createDocument(""))
     val editorHighlighter =
       EditorHighlighterFactory.getInstance.createEditorHighlighter(project, ScalaFileType.INSTANCE)
     viewer.asInstanceOf[EditorEx].setHighlighter(editorHighlighter)
