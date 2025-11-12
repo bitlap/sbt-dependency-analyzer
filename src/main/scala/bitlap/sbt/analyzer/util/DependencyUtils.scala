@@ -81,7 +81,7 @@ object DependencyUtils {
 
   def createRootScopeNode(dependencyScope: DependencyScopeEnum, project: Project): DependencyScopeNode = {
     val scopeDisplayName = "project " + project.getBasePath + " (" + dependencyScope.toString + ")"
-    val node = new DependencyScopeNode(
+    val node             = new DependencyScopeNode(
       rootId.getAndIncrement(),
       dependencyScope.toString,
       scopeDisplayName,
@@ -220,7 +220,7 @@ object DependencyUtils {
     if (projectSettings == null) {
       return false
     }
-    val moduleExists = proj.getText.toLowerCase.contains("\"" + moduleName + "\"".toLowerCase)
+    val moduleExists  = proj.getText.toLowerCase.contains("\"" + moduleName + "\"".toLowerCase)
     val fixModuleName = if (!projectSettings.isUseQualifiedModuleNames && moduleName.exists(_ == '-')) {
       isEqualModule(moduleName)
     } else {

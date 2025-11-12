@@ -80,7 +80,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
       projectDataManager.getExternalProjectsData(project, SbtProjectSystem.Id).asScala.foreach { projectInfo =>
         if (projectInfo.getExternalProjectStructure != null) {
           val projectStructure = projectInfo.getExternalProjectStructure
-          val childrenModules = ExternalSystemApiUtil
+          val childrenModules  = ExternalSystemApiUtil
             .findAll(projectStructure, ProjectKeys.MODULE)
             .asScala
             .toList
@@ -224,7 +224,8 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     projectDir: String
   ): Unit = {
     val dependency = createDependency(dependencyNode, scope, usage)
-    if (dependency == null) {} else {
+    if (dependency == null) {}
+    else {
       dependencies.append(dependency)
       for (node <- dependencyNode.getDependencies.asScala) {
         addDependencies(dependency, scope, node, dependencies, projectDir)
@@ -303,7 +304,7 @@ object SbtDependencyAnalyzerContributor
   private def isValidFile(project: Project, file: String): Boolean = {
     if (dependencyIsAvailable.get()) {
       val lastModified = VfsUtil.findFile(Path.of(file), true).getTimeStamp
-      val upToDate =
+      val upToDate     =
         System.currentTimeMillis() <= lastModified + SettingsState.getSettings(project).fileCacheTimeout * 1000
       if (!upToDate) {
         dependencyIsAvailable.set(false)
@@ -426,9 +427,10 @@ object SbtDependencyAnalyzerContributor
           var node: DependencyScopeNode = null
           try {
 
-            if (settings.disableAnalyzeProvided && scope == DependencyScopeEnum.Provided) {} else if (
-              settings.disableAnalyzeTest && scope == DependencyScopeEnum.Test
-            ) {} else if (settings.disableAnalyzeCompile && scope == DependencyScopeEnum.Compile) {} else {
+            if (settings.disableAnalyzeProvided && scope == DependencyScopeEnum.Provided) {}
+            else if (settings.disableAnalyzeTest && scope == DependencyScopeEnum.Test) {}
+            else if (settings.disableAnalyzeCompile && scope == DependencyScopeEnum.Compile) {}
+            else {
               node = executeCommandOrReadExistsFile(scope)
             }
             if (node != null) {
