@@ -21,7 +21,7 @@ jobs:
           java-version: 17
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v6          
+      - uses: coursier/cache-action@v7          
       - name: Build
         run: sbt compile
 
@@ -36,7 +36,7 @@ jobs:
           java-version: 17
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v6          
+      - uses: coursier/cache-action@v7          
       - name: Check Style
         run: sbt check
         
@@ -51,7 +51,7 @@ jobs:
           java-version: 17
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v6
+      - uses: coursier/cache-action@v7
       - name: Test
         run: sbt test
   
@@ -66,7 +66,7 @@ jobs:
           java-version: 17
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v6          
+      - uses: coursier/cache-action@v7          
       # - name: Check Binary Compatibility
       #   run: sbt runPluginVerifier
 
