@@ -1,8 +1,8 @@
 import org.jetbrains.sbtidea.Keys.*
 import org.jetbrains.sbtidea.verifier.FailureLevel
 
-lazy val scala3Version         = "3.7.3"
-lazy val logbackVersion        = "1.5.18"
+lazy val scala3Version         = "3.7.4"
+lazy val logbackVersion        = "1.5.21"
 lazy val graphvizVersion       = "0.18.1"
 lazy val joorVersion           = "0.9.15"
 lazy val scalatestVersion      = "3.2.19"
@@ -18,7 +18,7 @@ ThisBuild / version := pluginVersion
 
 inThisBuild(
   List(
-    homepage := Some(url("https://github.com/bitlap/sbt-dependency-analyzer")),
+    homepage   := Some(url("https://github.com/bitlap/sbt-dependency-analyzer")),
     developers := List(
       Developer(
         id = "jxnu-liguobin",
@@ -53,7 +53,7 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
     ThisBuild / intellijPluginName := "Sbt Dependency Analyzer",
     ThisBuild / intellijBuild      := intellijVersion,
     ThisBuild / intellijPlatform   := (Global / intellijPlatform).??(IntelliJPlatform.IdeaCommunity).value,
-    signPluginOptions := signPluginOptions.value.copy(
+    signPluginOptions              := signPluginOptions.value.copy(
       enabled = true,
       certFile = Some(file(sys.env.getOrElse("PLUGIN_SIGN_KEY", "/Users/liguobin/chain.crt"))),
       privateKeyFile = Some(file(sys.env.getOrElse("PLUGIN_SIGN_CERT", "/Users/liguobin/private.pem"))),

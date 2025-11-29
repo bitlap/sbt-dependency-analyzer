@@ -42,7 +42,7 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
         .sortWith((a, b) => a > b)
         .headOption
         .getOrElse(0)
-    val graph = new DependencyGraph(maxId + 1)
+    val graph             = new DependencyGraph(maxId + 1)
     val relationLabelsMap = dependencies.relations.map { r =>
       graph.addEdge(r.head, r.tail)
       s"${r.head}-${r.tail}" -> r.label
@@ -61,7 +61,7 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
 
   /** build tree for dependency analyzer view
    */
-  override def buildDependencyTree(context: ModuleContext, root: DependencyScopeNode): DependencyScopeNode = {
+  override def buildDependencyTree(context: AnalyzerContext, root: DependencyScopeNode): DependencyScopeNode = {
     val data                       = getDependencyRelations(context)
     val dependencies: Dependencies = data.orNull
     val depMap = data.map(_.dependencies.map(a => a.id.toString -> toDependencyNode(a)).toMap).getOrElse(Map.empty)
@@ -98,7 +98,7 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
     parentChildrenMap: Map[String, List[Int]],
     depMap: Map[String, DependencyNode],
     relationLabelsMap: Map[String, String],
-    context: ModuleContext,
+    context: AnalyzerContext,
     relations: List[Relation]
   ): Unit = {
     val childIds = parentChildrenMap
@@ -127,7 +127,7 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
 
   /** parse dot file, get graph data
    */
-  private def getDependencyRelations(context: ModuleContext): Option[Dependencies] =
+  private def getDependencyRelations(context: AnalyzerContext): Option[Dependencies] =
     val mutableGraph: MutableGraph = DotUtils.parseAsGraph(context)
     if (mutableGraph == null) None
     else

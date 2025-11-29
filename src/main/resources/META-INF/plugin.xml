@@ -143,6 +143,16 @@
                 <li>Support IDEA 253.x (build version 253.20558.43) .</li>
                 <li>Support scrolling modules .</li>
             </ul>
+            <h1>0.8.4</h1>
+            <ul>
+                <li>Fix Scala Native/Js Go to dependency .</li>
+            </ul>
+            <!-- @@ -->
+            <h1>0.8.3-252.25557.131</h1>
+            <ul>
+                <li>Fix multi-module project .</li>
+            </ul>
+            <!-- @@ -->
             <h1>0.8.2-252.25557.131</h1>
             <ul>
                 <li>Support sbt 1.11+ .</li>

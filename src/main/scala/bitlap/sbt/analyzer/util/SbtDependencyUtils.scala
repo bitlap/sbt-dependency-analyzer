@@ -19,7 +19,7 @@ import org.jetbrains.plugins.scala.lang.psi.api.statements.ScPatternDefinition
 import org.jetbrains.plugins.scala.lang.psi.impl.ScalaPsiElementFactory
 import org.jetbrains.plugins.scala.lang.psi.types.result.TypeResultExt
 import org.jetbrains.plugins.scala.project.*
-import org.jetbrains.sbt.{ Sbt, SbtUtil as SSbtUtil }
+import org.jetbrains.sbt.Sbt
 import org.jetbrains.sbt.SbtUtil.{ getBuildModuleData, getSbtModuleData }
 import org.jetbrains.sbt.language.utils.{ DependencyOrRepositoryPlaceInfo, SbtArtifactInfo, SbtDependencyCommon }
 
@@ -187,11 +187,11 @@ object SbtDependencyUtils {
     versionRequired: Boolean = true,
     configurationRequired: Boolean = true
   ): (ScInfixExpr, String, ScInfixExpr) = {
-    val sbtFileOpt        = getSbtFileOpt(module)
-    val targetCoordinates = dependency.getCoordinates
+    val sbtFileOpt            = getSbtFileOpt(module)
+    val targetCoordinates     = dependency.getCoordinates
     val targetDepText: String = generateArtifactTextVerbose(
       targetCoordinates.getGroupId,
-      targetCoordinates.getArtifactId.replaceAll("_\\d+.*$", ""),
+      DependencyUtils.getArtifactWithoutScalaVersion(targetCoordinates.getArtifactId),
       if (versionRequired) targetCoordinates.getVersion else "",
       if (configurationRequired) dependency.getScope else SbtDependencyCommon.defaultLibScope
     )
@@ -205,15 +205,29 @@ object SbtDependencyUtils {
         var processedDepText: String = ""
         processedDep match {
           case List(a, b, c) =>
-            processedDepText =
-              generateArtifactTextVerbose(a, b, if (versionRequired) c else "", SbtDependencyCommon.defaultLibScope)
+            if (b == targetCoordinates.getVersion) {
+              processedDepText =
+                generateArtifactTextVerbose(a, c, if (versionRequired) b else "", SbtDependencyCommon.defaultLibScope)
+            } else {
+              processedDepText =
+                generateArtifactTextVerbose(a, b, if (versionRequired) c else "", SbtDependencyCommon.defaultLibScope)
+            }
           case List(a, b, c, d) =>
-            processedDepText = generateArtifactTextVerbose(
-              a,
-              b,
-              if (versionRequired) c else "",
-              if (configurationRequired) d else SbtDependencyCommon.defaultLibScope
-            )
+            if (b == targetCoordinates.getVersion) {
+              processedDepText = generateArtifactTextVerbose(
+                a,
+                c,
+                if (versionRequired) c else "",
+                if (configurationRequired) d else SbtDependencyCommon.defaultLibScope
+              )
+            } else {
+              processedDepText = generateArtifactTextVerbose(
+                a,
+                b,
+                if (versionRequired) c else "",
+                if (configurationRequired) d else SbtDependencyCommon.defaultLibScope
+              )
+            }
           case _ =>
         }
 
@@ -264,6 +278,8 @@ object SbtDependencyUtils {
     libDeps.getOrElse(Seq.empty)
   }
 
+  /** It may be necessary to exchange the positions of version and artifact in order to generate dependent coordinates.
+   */
   def processLibraryDependencyFromExprAndString(
     elem: (ScExpression, String, ScExpression),
     preserve: Boolean = false
@@ -539,7 +555,7 @@ object SbtDependencyUtils {
       case call: ScMethodCall if call.deepestInvokedExpr.textMatches(SEQ) | call.deepestInvokedExpr.textMatches(LIST) =>
         addDependencyToSeq(call, info)
       case typedSeq: ScTypedExpression if typedSeq.isSequenceArg => addDependencyToTypedSeq(typedSeq, info)
-      case settings: ScMethodCall =>
+      case settings: ScMethodCall                                =>
         settings.getEffectiveInvokedExpr match {
           case expr: ScReferenceExpression if SbtDependencyUtils.isSettings(expr.refName) =>
             Option(addDependencyToSettings(settings, info))
@@ -778,7 +794,7 @@ object SbtDependencyUtils {
   def getBuildModule(module: OpenapiModule): Option[OpenapiModule] = {
     val project       = module.getProject
     val moduleManager = ModuleManager.getInstance(project)
-    val buildModules = for {
+    val buildModules  = for {
       moduleData    <- getSbtModuleData(module).to(Seq)
       m             <- moduleManager.getModules
       sbtModuleData <- getBuildModuleData(project, m)
@@ -810,7 +826,7 @@ object SbtDependencyUtils {
       libDeps
         .map(libDepInfixAndString => {
           val libDepArr = SbtDependencyUtils
-            .processLibraryDependencyFromExprAndString(libDepInfixAndString) // exist some issues
+            .processLibraryDependencyFromExprAndString(libDepInfixAndString)
             .map(_.asInstanceOf[String])
           val dataContext: DataContext = (dataId: String) => {
             if (CommonDataKeys.PSI_ELEMENT.is(dataId)) {
@@ -820,8 +836,8 @@ object SbtDependencyUtils {
 
           libDepArr.length match {
             case x if x < 3 || x > 4 => null
-            case x if x >= 3 =>
-              val scope = if (x == 3) SbtDependencyCommon.defaultLibScope else libDepArr(3)
+            case x if x >= 3         =>
+              val scope         = if (x == 3) SbtDependencyCommon.defaultLibScope else libDepArr(3)
               val fixedArtifact =
                 if (!DependencyScopeEnum.values.exists(_.toString.toLowerCase.contains(scope.toLowerCase))) {
                   scope

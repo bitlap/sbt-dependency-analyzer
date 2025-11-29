@@ -1,6 +1,6 @@
 package bitlap.sbt.analyzer
 
-import bitlap.sbt.analyzer.model.ModuleContext
+import bitlap.sbt.analyzer.model.AnalyzerContext
 import bitlap.sbt.analyzer.parsing.{ DependencyGraphFactory, DependencyGraphType }
 
 import org.scalatest.flatspec.AnyFlatSpec
@@ -21,13 +21,13 @@ class DependencyGraphParserSpec extends AnyFlatSpec {
     root.setResolutionState(ResolutionState.RESOLVED)
 
     val ctx =
-      ModuleContext(
+      AnalyzerContext(
         getClass.getClassLoader.getResource("test.dot").getFile,
         "star-authority-protocol",
         DependencyScopeEnum.Compile,
         "fc.xuanwu.star",
-        ideaModuleNamePaths = Map.empty,
-        ideaModuleIdSbtModuleNames = Map.empty,
+        moduleNamePathsCache = Map.empty,
+        moduleIdArtifactIdsCache = Map.empty,
         isTest = true
       )
 

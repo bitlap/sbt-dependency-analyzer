@@ -36,14 +36,12 @@ final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
       DependencyGraphFactory
         .getInstance(dependencyGraphType)
         .buildDependencyTree(
-          ModuleContext(
+          AnalyzerContext(
             file,
             moduleId,
             scope,
             organization,
             moduleNamePaths,
-            module.isScalaJs,
-            module.isScalaNative,
             sbtModuleNameMap
           ),
           createRootScopeNode(scope, project)

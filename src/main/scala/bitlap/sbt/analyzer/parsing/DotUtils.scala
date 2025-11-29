@@ -20,7 +20,7 @@ import analyzer.util.Notifications
 import guru.nidi.graphviz.attribute.validate.ValidatorEngine
 import guru.nidi.graphviz.model.MutableGraph
 import guru.nidi.graphviz.parse.Parser
-import model.ModuleContext
+import model.AnalyzerContext
 
 object DotUtils {
 
@@ -32,7 +32,7 @@ object DotUtils {
     Try(parser.read(new File(file))).getOrElse(null)
   }
 
-  def parseAsGraph(context: ModuleContext): MutableGraph = {
+  def parseAsGraph(context: AnalyzerContext): MutableGraph = {
     if (context.isTest) return parseAsGraphTestOnly(context.analysisFile)
     val file = context.analysisFile
     try {

@@ -9,7 +9,7 @@ trait DependencyGraphParser {
   val dependencyGraphType: DependencyGraphType
 
   def buildDependencyTree(
-    context: ModuleContext,
+    context: AnalyzerContext,
     root: DependencyScopeNode
   ): DependencyScopeNode
 

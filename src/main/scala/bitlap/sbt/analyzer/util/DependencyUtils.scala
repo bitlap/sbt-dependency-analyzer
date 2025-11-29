@@ -6,6 +6,7 @@ package util
 import java.util.concurrent.atomic.AtomicLong
 
 import scala.jdk.CollectionConverters.*
+import scala.util.matching.Regex
 
 import bitlap.sbt.analyzer.model.*
 import bitlap.sbt.analyzer.parsing.*
@@ -25,17 +26,14 @@ import com.intellij.openapi.util.text.StringUtil
 
 object DependencyUtils {
 
-  final val DefaultConfiguration = toDAScope("default")
+  final val DEFAULT_CONFIGURATION = toDAScope("default")
 
-  private final val rootId     = new AtomicLong(0)
-  private final val artifactId = new AtomicLong(0)
+  private final val rootId       = new AtomicLong(0)
+  private final val artifactId   = new AtomicLong(0)
+  private val SBT_ARTIFACT_REGEX = "(.*):(.*):(.*)".r
 
-  private val SBT_ARTIFACT_REGEX      = "(.*):(.*):(.*)".r
-  private val SCALA_ARTIFACT_REGEX    = "(.*)_(.*)".r
-  private val NATIVE_ARTIFACT_PATTERN = "_native\\d(\\.\\d+)?_\\d(\\.\\d+)?"
-  private val SJS_ARTIFACT_PATTERN    = "_sjs\\d(\\.\\d+)?_\\d(\\.\\d+)?"
-  private val NATIVE_ARTIFACT_REGEX   = "(.*)(_native\\d(\\.\\d+)?)_(.*)".r
-  private val SJS_ARTIFACT_REGEX      = "(.*)(_sjs\\d(\\.\\d+)?)_(.*)".r
+  val SCALA_VERSION_PATTERN: Regex =
+    """^([a-zA-Z0-9-]+?)(?:_(?:sjs\d+(?:\.\d+)?|native\d*(?:\.\d+)?|2\.1[123]|3))+$""".r
 
   private final case class PlatformModule(
     module: String,
@@ -50,10 +48,10 @@ object DependencyUtils {
    *  and applying filtering logic, which is critical for dependency graph/tree operations as this node serves as the
    *  root of the structure.
    */
-  def isSelfNode(dn: DependencyNode, context: ModuleContext): Boolean = {
+  def isSelfNode(dn: DependencyNode, context: AnalyzerContext): Boolean = {
     dn.getDisplayName match
       case SBT_ARTIFACT_REGEX(group, artifact, _) =>
-        context.organization == group && isSelfArtifact(artifact, context)
+        context.organization == group && isSubModule(artifact, context)
       case _ => false
   }
 
@@ -83,7 +81,7 @@ object DependencyUtils {
 
   def createRootScopeNode(dependencyScope: DependencyScopeEnum, project: Project): DependencyScopeNode = {
     val scopeDisplayName = "project " + project.getBasePath + " (" + dependencyScope.toString + ")"
-    val node = new DependencyScopeNode(
+    val node             = new DependencyScopeNode(
       rootId.getAndIncrement(),
       dependencyScope.toString,
       scopeDisplayName,
@@ -96,7 +94,7 @@ object DependencyUtils {
   def appendChildrenAndFixProjectNodes[N <: DependencyNode](
     parentNode: N,
     nodes: Seq[DependencyNode],
-    context: ModuleContext
+    context: AnalyzerContext
   ): Unit = {
     parentNode.getDependencies.addAll(nodes.asJava)
     val moduleDependencies = nodes.filter(d => isProjectModule(d, context))
@@ -112,8 +110,8 @@ object DependencyUtils {
       val group      = artifact.map(_.group).getOrElse(Constants.EMPTY_STRING)
       // Use artifact to determine whether there are modules in the dependency.
       if (
-        context.ideaModuleIdSbtModuleNames.values
-          .exists(d => group == context.organization && toPlatformModule(artifactId).module == d)
+        context.moduleIdArtifactIdsCache.values
+          .exists(d => group == context.organization && getArtifactWithoutScalaVersion(artifactId) == d)
       ) {
         appendChildrenAndFixProjectNodes(
           node,
@@ -124,51 +122,40 @@ object DependencyUtils {
     }
   }
 
-  private def isSelfArtifact(artifact: String, context: ModuleContext): Boolean = {
-    // processing cross-platform, module name is not artifact!
+  private def isSubModule(maybeModule: String, context: AnalyzerContext): Boolean = {
+    // Handles the cross-platform, module name is not equals to artifact!
     val currentModuleName =
-      context.ideaModuleIdSbtModuleNames.getOrElse(
+      context.moduleIdArtifactIdsCache.getOrElse(
         context.currentModuleId,
-        context.ideaModuleIdSbtModuleNames.getOrElse(
+        context.moduleIdArtifactIdsCache.getOrElse(
           Constants.SINGLE_SBT_MODULE,
-          context.ideaModuleIdSbtModuleNames.getOrElse(Constants.ROOT_SBT_MODULE, context.currentModuleId)
+          context.moduleIdArtifactIdsCache.getOrElse(Constants.ROOT_SBT_MODULE, context.currentModuleId)
         )
       )
 
     // NOTE: we don't determine the Scala version number.
-    if (context.isScalaNative) {
-      val module = artifact.replaceAll(NATIVE_ARTIFACT_PATTERN, Constants.EMPTY_STRING)
-      currentModuleName.equalsIgnoreCase(module)
-    } else if (context.isScalaJs) {
-      val module = artifact.replaceAll(SJS_ARTIFACT_PATTERN, Constants.EMPTY_STRING)
-      currentModuleName.equalsIgnoreCase(module)
-    } else {
-      artifact match
-        case SCALA_ARTIFACT_REGEX(module, _) =>
-          currentModuleName.equalsIgnoreCase(module)
-        // it is a java project
-        case _ => artifact.equalsIgnoreCase(currentModuleName)
+    maybeModule match {
+      case SCALA_VERSION_PATTERN(module) => module.equalsIgnoreCase(currentModuleName)
+      case _                             => maybeModule.equalsIgnoreCase(currentModuleName)
     }
   }
 
-  private def toPlatformModule(artifact: String): PlatformModule = {
+  def getArtifactWithoutScalaVersion(artifact: String): String = {
     artifact match
-      case SJS_ARTIFACT_REGEX(module, _, _, scalaVer)    => PlatformModule(module, scalaVer)
-      case NATIVE_ARTIFACT_REGEX(module, _, _, scalaVer) => PlatformModule(module, scalaVer)
-      case SCALA_ARTIFACT_REGEX(module, scalaVer)        => PlatformModule(module, scalaVer)
-      case _                                             => PlatformModule(artifact, Constants.EMPTY_STRING)
+      case SCALA_VERSION_PATTERN(module) => module
+      case _                             => artifact
   }
 
-  private def toProjectDependencyNode(dn: DependencyNode, context: ModuleContext): Option[DependencyNode] = {
+  private def toProjectDependencyNode(dn: DependencyNode, context: AnalyzerContext): Option[DependencyNode] = {
     val artifactInfo = getArtifactInfoFromDisplayName(dn.getDisplayName).orNull
     if (artifactInfo == null) return None
-    val sbtModuleName  = toPlatformModule(artifactInfo.artifact).module
-    val ideaModuleName = context.ideaModuleIdSbtModuleNames.find(_._2 == sbtModuleName).map(_._1)
+    val sbtModuleName  = getArtifactWithoutScalaVersion(artifactInfo.artifact)
+    val ideaModuleName = context.moduleIdArtifactIdsCache.find(_._2 == sbtModuleName).map(_._1)
 
     // Processing cross-platform, module name is not artifact
     // This is a project node, we need a module not an artifact to get project path!
 
-    val fixedCustomName = context.ideaModuleNamePaths.map { case (name, path) =>
+    val fixedCustomName = context.moduleNamePathsCache.map { case (name, path) =>
       if (name.exists(_ == ' '))
         name.toLowerCase.replace(' ', '-') -> path
       else
@@ -177,9 +164,9 @@ object DependencyUtils {
 
     val projectPath =
       ideaModuleName
-        .flatMap(m => context.ideaModuleNamePaths.get(m))
+        .flatMap(m => context.moduleNamePathsCache.get(m))
         .getOrElse(
-          context.ideaModuleNamePaths
+          context.moduleNamePathsCache
             .getOrElse(sbtModuleName, fixedCustomName.getOrElse(sbtModuleName.toLowerCase, Constants.EMPTY_STRING))
         )
 
@@ -201,14 +188,14 @@ object DependencyUtils {
     Some(p)
   }
 
-  private def isProjectModule(dn: DependencyNode, context: ModuleContext): Boolean = {
+  private def isProjectModule(dn: DependencyNode, context: AnalyzerContext): Boolean = {
     // module dependency
     val artifactInfo = getArtifactInfoFromDisplayName(dn.getDisplayName).orNull
     if (artifactInfo == null) return false
     if (artifactInfo.group != context.organization) return false
     // Use artifacts to determine if there are dependent modules
     val matchModule =
-      context.ideaModuleIdSbtModuleNames.values.filter(m => m == toPlatformModule(artifactInfo.artifact).module)
+      context.moduleIdArtifactIdsCache.values.filter(m => m == getArtifactWithoutScalaVersion(artifactInfo.artifact))
 
     matchModule.nonEmpty
 
@@ -233,7 +220,7 @@ object DependencyUtils {
     if (projectSettings == null) {
       return false
     }
-    val moduleExists = proj.getText.toLowerCase.contains("\"" + moduleName + "\"".toLowerCase)
+    val moduleExists  = proj.getText.toLowerCase.contains("\"" + moduleName + "\"".toLowerCase)
     val fixModuleName = if (!projectSettings.isUseQualifiedModuleNames && moduleName.exists(_ == '-')) {
       isEqualModule(moduleName)
     } else {

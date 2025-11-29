@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -21,14 +21,14 @@ jobs:
           java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v6          
+      - uses: coursier/cache-action@v7          
       - name: Build
         run: sbt compile
 
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -36,14 +36,14 @@ jobs:
           java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v6          
+      - uses: coursier/cache-action@v7          
       - name: Check Style
         run: sbt check
         
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -51,14 +51,14 @@ jobs:
           java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v6
+      - uses: coursier/cache-action@v7
       - name: Test
         run: sbt test
   
   verification:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -66,9 +66,9 @@ jobs:
           java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v6          
-      # - name: Check Binary Compatibility
-      #   run: sbt runPluginVerifier
+      - uses: coursier/cache-action@v7          
+      - name: Check Binary Compatibility
+        run: sbt runPluginVerifier
 
   
   ci:
