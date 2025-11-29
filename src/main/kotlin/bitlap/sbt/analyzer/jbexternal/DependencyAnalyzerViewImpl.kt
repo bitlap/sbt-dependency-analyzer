@@ -35,6 +35,7 @@ import com.intellij.openapi.observable.operation.core.getOperationInProgressProp
 import com.intellij.openapi.observable.operation.core.isOperationInProgress
 import com.intellij.openapi.observable.operation.core.withCompletedOperation
 import com.intellij.openapi.observable.properties.AtomicProperty
+import com.intellij.openapi.observable.properties.ObservableProperty
 import com.intellij.openapi.observable.util.*
 import com.intellij.openapi.progress.util.BackgroundTaskUtil
 import com.intellij.openapi.project.Project
@@ -45,11 +46,10 @@ import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLoadingPanel
 import com.intellij.util.concurrency.AppExecutorUtil
-import com.intellij.util.ui.JBUI
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency as Dependency
 
 /**
- * https://github.com/JetBrains/intellij-community/blob/idea/233.11799.300/platform/external-system-impl/src/com/intellij/openapi/externalSystem/dependency/analyzer/DependencyAnalyzerViewImpl.kt
+ * https://github.com/JetBrains/intellij-community/blob/idea/253.20558.43/platform/external-system-impl/src/com/intellij/openapi/externalSystem/dependency/analyzer/DependencyAnalyzerViewImpl.kt
  */
 class DependencyAnalyzerViewImpl(
     private val project: Project, private val systemId: ProjectSystemId, private val parentDisposable: Disposable
@@ -324,8 +324,9 @@ class DependencyAnalyzerViewImpl(
         val externalProjectSelector = ExternalProjectSelector(
             externalProjectProperty, externalProjects, iconsProvider
         ).bindEnabled(!dependencyLoadingProperty)
-        val dataFilterField = SearchTextField(SEARCH_HISTORY_PROPERTY).apply { setPreferredWidth(JBUI.scale(240)) }
-            .apply { textEditor.bind(dependencyDataFilterProperty) }.bindEnabled(!dependencyLoadingProperty)
+        val dataFilterField =
+            SearchTextField(SEARCH_HISTORY_PROPERTY).apply { textEditor.bind(dependencyDataFilterProperty) }
+                .bindEnabled(!dependencyLoadingProperty)
         val scopeFilterSelector =
             SearchScopeSelector(dependencyScopeFilterProperty).bindEnabled(!dependencyLoadingProperty)
         val dependencyInspectionFilterButton = toggleAction(showDependencyWarningsProperty).apply {
@@ -367,11 +368,11 @@ class DependencyAnalyzerViewImpl(
                 .bindEnabled(!dependencyLoadingProperty)
         val dependencyPanel = cardPanel<Boolean> {
             ScrollPaneFactory.createScrollPane(if (it) dependencyTree else dependencyList, true)
-        }.bind(showDependencyTreeProperty)
+        }.bindSelected(showDependencyTreeProperty)
         val dependencyLoadingPanel =
             JBLoadingPanel(BorderLayout(), parentDisposable).apply { add(dependencyPanel, BorderLayout.CENTER) }
                 .apply { setLoadingText(ExternalSystemBundle.message("external.system.dependency.analyzer.dependency.loading")) }
-                .bind(dependencyLoadingProperty)
+                .bindLoading(dependencyLoadingProperty)
         val showDependencyTreeButton = toggleAction(showDependencyTreeProperty).apply {
             templatePresentation.text =
                 ExternalSystemBundle.message("external.system.dependency.analyzer.resolved.tree.show")
