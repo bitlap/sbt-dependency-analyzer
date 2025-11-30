@@ -4,7 +4,7 @@ package analyzer
 package util
 
 import java.io.*
-import java.nio.file.Paths
+import java.nio.file.{ Path, Paths }
 
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
@@ -101,14 +101,14 @@ object SbtUtils {
   def getSbtExecutionSettings(dir: String, project: Project): SbtExecutionSettings =
     SbtExternalSystemManager.executionSettingsFor(project, dir)
 
-  def launcherJar(sbtSettings: SbtExecutionSettings): File =
-    sbtSettings.customLauncher.getOrElse(SSbtUtil.getDefaultLauncher)
+  def launcherJar(sbtSettings: SbtExecutionSettings): Path =
+    sbtSettings.customLauncher.map(_.toPath).getOrElse(SSbtUtil.defaultLauncherPath)
 
   def getSbtVersion(project: Project): SbtVersion = {
     val workingDirPath = getWorkingDirPath(project)
     val sbtSettings    = getSbtExecutionSettings(workingDirPath, project)
     lazy val launcher  = launcherJar(sbtSettings)
-    SSbtUtil.detectSbtVersion(Paths.get(workingDirPath), launcher.toPath)
+    SSbtUtil.detectSbtVersion(Paths.get(workingDirPath), launcher)
   }
 
   // see https://github.com/JetBrains/intellij-scala/blob/idea232.x/sbt/sbt-impl/src/org/jetbrains/sbt/shell/SbtProcessManager.scala
