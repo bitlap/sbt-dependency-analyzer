@@ -171,7 +171,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
         versionRequired = false
       )
     if (targetedLibDepTuple == null) {
-      throw AnalyzerCommandNotFoundException("Target dependency not found")
+      throw AnalyzerCommandNotFoundException("The target dependency is missing.")
     }
     // dangerous, hard-coded
     targetedLibDepTuple._3.getParent match {
@@ -193,7 +193,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
           lastRef.foreach(_.parent.foreach(_.delete()))
         }
       case _ =>
-        throw AnalyzerCommandNotFoundException("This syntax isn’t supported yet.")
+        throw AnalyzerCommandNotFoundException("This syntax is not yet supported.")
     }
   }
 
