@@ -22,7 +22,7 @@ import org.jetbrains.plugins.scala.project.{ ProjectContext, ProjectPsiFileExt, 
 import org.jetbrains.sbt.SbtUtil
 import org.jetbrains.sbt.language.utils.{ DependencyOrRepositoryPlaceInfo, SbtArtifactInfo, SbtDependencyCommon }
 import org.jetbrains.sbt.language.utils.SbtDependencyCommon.defaultLibScope
-import org.jetbrains.sbt.resolvers.{ SbtMavenResolver, SbtResolverUtils }
+import org.jetbrains.sbt.resolvers.SbtMavenResolver
 
 import com.intellij.buildsystem.model.DeclaredDependency
 import com.intellij.buildsystem.model.unified.{ UnifiedCoordinates, UnifiedDependency, UnifiedDependencyRepository }
@@ -171,7 +171,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
         versionRequired = false
       )
     if (targetedLibDepTuple == null) {
-      throw AnalyzerCommandNotFoundException("Target dependency not found")
+      throw AnalyzerCommandNotFoundException("The target dependency is missing.")
     }
     // dangerous, hard-coded
     targetedLibDepTuple._3.getParent match {
@@ -193,7 +193,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
           lastRef.foreach(_.parent.foreach(_.delete()))
         }
       case _ =>
-        throw AnalyzerCommandNotFoundException("This syntax isn’t supported yet.")
+        throw AnalyzerCommandNotFoundException("This syntax is not yet supported.")
     }
   }
 
@@ -221,7 +221,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
 
   override def declaredRepositories(module: OpenapiModule.Module): util.List[UnifiedDependencyRepository] = try {
     SbtResolverUtils
-      .projectResolvers(using module.getProject)
+      .projectResolvers(module.getProject)
       .collect { case r: SbtMavenResolver =>
         new UnifiedDependencyRepository(r.name, r.presentableName, r.normalizedRoot)
       }

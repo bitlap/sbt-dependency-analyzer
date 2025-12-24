@@ -332,8 +332,9 @@ object SbtDependencyAnalyzerContributor
     def getStatus(usage: Dependency, data: Dependency.Data): JList[Dependency.Status] =
       val status = ListBuffer[Dependency.Status]()
       if (node.getResolutionState == ResolutionState.UNRESOLVED) {
+        val title   = ExternalSystemBundle.message("external.system.dependency.analyzer.warning.unresolved.title")
         val message = ExternalSystemBundle.message("external.system.dependency.analyzer.warning.unresolved")
-        status.append(DAWarning(message))
+        status.append(DAWarning(title, message))
       }
       val selectionReason = node.getSelectionReason
       data match
@@ -347,11 +348,15 @@ object SbtDependencyAnalyzerContributor
             case _ => null
 
           if (conflictedVersion != null) {
+            val title = ExternalSystemBundle.message(
+              "external.system.dependency.analyzer.warning.version.conflict.title",
+              conflictedVersion
+            )
             val message = ExternalSystemBundle.message(
               "external.system.dependency.analyzer.warning.version.conflict",
               conflictedVersion
             )
-            status.append(DAWarning(message))
+            status.append(DAWarning(title, message))
           }
         case _ =>
       status.asJava
