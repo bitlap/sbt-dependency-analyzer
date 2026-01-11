@@ -3,12 +3,12 @@
     <id>org.bitlap.sbtDependencyAnalyzer</id>
     <name>Sbt Dependency Analyzer</name>
     <!--  will be added by sbt plugin build  -->
-    <version>0.8.0-252.25557.131</version>
+    <version>0.9.0-RC1</version>
     <vendor url="https://github.com/bitlap/sbt-dependency-analyzer" email="dreamylost@outlook.com">Bitlap
     </vendor>
     <!-- please see https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html for description -->
     <!-- old version support, see branch idea231.x   -->
-    <idea-version since-build="252.0"/>
+    <idea-version since-build="253.0"/>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lang</depends>
@@ -138,6 +138,11 @@
 
     <change-notes>
         <![CDATA[
+            <h1>0.9.0-RC1</h1>
+            <ul>
+                <li>Support IDEA 253.x .</li>
+                <li>Support scrolling modules .</li>
+            </ul>
             <h1>0.8.4</h1>
             <ul>
                 <li>Fix Scala Native/Js Go to dependency .</li>

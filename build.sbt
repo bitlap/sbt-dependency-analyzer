@@ -6,14 +6,13 @@ lazy val logbackVersion        = "1.5.24"
 lazy val graphvizVersion       = "0.18.1"
 lazy val joorVersion           = "0.9.15"
 lazy val scalatestVersion      = "3.2.19"
-lazy val pluginVerifierVersion = "1.394"
+lazy val pluginVerifierVersion = "1.398"
 lazy val ktVersion             = "2.1.0"
 lazy val jbAnnotVersion        = "26.0.2"
 
 // https://youtrack.jetbrains.com/articles/IDEA-A-2100661679/IntelliJ-IDEA-2023.3-Latest-Builds
-// NOTE: Latest-Builds 233
-lazy val intellijVersion = "252.25557.131"
-lazy val pluginVersion   = s"0.8.4"
+lazy val intellijVersion = "253.29346.240"
+lazy val pluginVersion   = "0.9.0-RC1"
 
 ThisBuild / version := pluginVersion
 
@@ -74,7 +73,8 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
       xmx = 2048,
       xms = 256,
       defaultOptions = intellijVMOptions.value.defaultOptions ++ Seq(
-        "--add-exports=java.management/sun.management=ALL-UNNAMED"
+        "--add-exports=java.management/sun.management=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED"
       )
     ),
     Compile / unmanagedResourceDirectories += baseDirectory.value / "src" / "main" / "resources",

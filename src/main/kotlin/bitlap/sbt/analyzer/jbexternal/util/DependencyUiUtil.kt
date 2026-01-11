@@ -1,14 +1,8 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package bitlap.sbt.analyzer.jbexternal.util
 
-import javax.swing.JList
-import javax.swing.JTree
-import javax.swing.ListModel
-import javax.swing.tree.DefaultMutableTreeNode
-import javax.swing.tree.TreeModel
 
 import bitlap.sbt.analyzer.jbexternal.SbtDAArtifact
-
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.UiDataProvider
@@ -28,6 +22,12 @@ import com.intellij.ui.components.JBList
 import com.intellij.ui.treeStructure.SimpleTree
 import com.intellij.util.ui.ListUiUtil
 import com.intellij.util.ui.tree.TreeUtil
+import org.jetbrains.annotations.Nls
+import javax.swing.JList
+import javax.swing.JTree
+import javax.swing.ListModel
+import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.TreeModel
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency as Dependency
 
 
@@ -51,10 +51,8 @@ private fun SimpleColoredComponent.customizeCellRenderer(
     }
     val dataText = group.data.getDisplayText(showGroupId)
     append(dataText, if (group.isOmitted) GRAYED_ATTRIBUTES else REGULAR_ATTRIBUTES)
-    val scopes = group.variances.map { it.scope.name }.toSet()
-    val scopesText = scopes.singleOrNull() ?: ExternalSystemBundle.message(
-        "external.system.dependency.analyzer.scope.n", scopes.size
-    )
+    val nScopesText = ExternalSystemBundle.message("external.system.dependency.analyzer.scope.n", group.scopes.size)
+    val scopesText = group.scopes.map { it.name }.singleOrNull() ?: nScopesText
     append(" ($scopesText)", GRAYED_ATTRIBUTES)
 
     if (showSize) {
@@ -84,6 +82,30 @@ private fun SimpleColoredComponent.customizeCellRenderer(
             else -> return
         }
     }
+
+    toolTipText = buildList {
+        val dataText = when (group.data) {
+            is Dependency.Data.Module -> ExternalSystemBundle.message("external.system.dependency.analyzer.tooltip.module")
+            is Dependency.Data.Artifact -> ExternalSystemBundle.message("external.system.dependency.analyzer.tooltip.artifact")
+        }
+        add(htmlParagraph(dataText + "\n" + htmlList(listOf(group.data.getDisplayText(true)))))
+
+        val scopesText = ExternalSystemBundle.message("external.system.dependency.analyzer.tooltip.scopes")
+        add(htmlParagraph(scopesText + "\n" + htmlList(group.scopes.map { it.title }.toSet())))
+
+        if (group.status.isNotEmpty()) {
+            val statusText = ExternalSystemBundle.message("external.system.dependency.analyzer.tooltip.status")
+            add(htmlParagraph(statusText + "\n" + htmlList(group.status.map { it.title }.toSet())))
+        }
+    }.joinToString("\n")
+}
+
+private fun htmlList(elements: Iterable<@Nls String>): @NlsSafe String {
+    return "<ul>\n" + elements.joinToString("\n") { "<li>$it</li>" } + "\n</ul>"
+}
+
+private fun htmlParagraph(text: @Nls String): @NlsSafe String {
+    return "<p>\n$text\n</p>"
 }
 
 internal abstract class AbstractDependencyList(
@@ -227,6 +249,7 @@ internal class DependencyGroup(val variances: List<Dependency>) {
     val data by lazy { dependency.data }
     val scopes by lazy { variances.map { it.scope }.toSet() }
     val parents by lazy { variances.map { it.parent }.toSet() }
+    val status by lazy { variances.flatMap { it.status } }
     val warnings by lazy { variances.flatMap { it.warnings } }
     val isOmitted by lazy { variances.all { it.isOmitted } }
     val hasWarnings by lazy { variances.any { it.hasWarnings } }

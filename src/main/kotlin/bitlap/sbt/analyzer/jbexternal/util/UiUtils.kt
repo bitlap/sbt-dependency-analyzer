@@ -1,53 +1,33 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package bitlap.sbt.analyzer.jbexternal.util
 
-import java.awt.BorderLayout
-import javax.swing.JComponent
-import javax.swing.JLabel
-import javax.swing.JList
-import javax.swing.JPanel
-import javax.swing.JTree
-import javax.swing.Icon
-import javax.swing.border.Border
-
-import bitlap.sbt.analyzer.jbexternal.DependencyAnalyzerManager
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.ActionToolbar
-import com.intellij.openapi.actionSystem.ActionUpdateThread
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.actionSystem.ToggleAction
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle
-import com.intellij.openapi.observable.properties.ObservableBooleanProperty
 import com.intellij.openapi.observable.properties.ObservableMutableProperty
 import com.intellij.openapi.observable.properties.ObservableProperty
 import com.intellij.openapi.observable.util.bind
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.ui.SimpleToolWindowPanel
-import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.CardLayoutPanel
 import com.intellij.ui.OnePixelSplitter
-import com.intellij.ui.components.JBLoadingPanel
+import com.intellij.ui.components.panels.ListLayout
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
 import com.intellij.util.ui.tree.TreeUtil
+import org.jetbrains.annotations.Nls
+import org.jetbrains.annotations.NonNls
+import java.awt.BorderLayout
+import javax.swing.*
+import javax.swing.border.Border
 
-internal val PROJECT_ICON: Icon =
-    IconLoader.getIcon("/icons/sbt_dependency_analyzer.svg", DependencyAnalyzerManager::class.java)
+
 internal const val BORDER = 6
 internal const val INDENT = 16
 internal const val ICON_TEXT_GAP = 4
 internal const val ACTION_BORDER = 2
-
-// import com.intellij.openapi.observable.util.whenDisposed
-fun Disposable.whenDisposed(listener: () -> Unit) {
-    Disposer.register(this, Disposable { listener() })
-}
 
 internal fun emptyListBorder(): Border {
     return JBUI.Borders.empty()
@@ -61,51 +41,28 @@ internal fun emptyListCellBorder(list: JList<*>, index: Int, indent: Int = 0): B
     return JBUI.Borders.empty(topGap, leftGap, bottomGap, rightGap)
 }
 
-internal fun setupListPopupPreferredWidth(list: JList<*>) {
-    list.setPreferredWidth(maxOf(JBUI.scale(164), list.preferredSize.width))
-}
+internal fun label(text: @Nls String) = JLabel(text).apply { border = JBUI.Borders.empty(BORDER) }
 
-internal fun JComponent.setPreferredWidth(width: Int) {
-    preferredSize = preferredSize.also { it.width = width }
-}
-
-internal fun label(text: String) = JLabel(text).apply { border = JBUI.Borders.empty(BORDER) }
-
-internal fun label(property: ObservableProperty<String>) = label(property.get()).bind(property)
+internal fun label(property: ObservableProperty<@Nls String>) = label(property.get()).bind(property)
 
 internal fun toolWindowPanel(configure: SimpleToolWindowPanel.() -> Unit) =
     SimpleToolWindowPanel(true, true).apply { configure() }
 
 internal fun toolbarPanel(configure: BorderLayoutPanel.() -> Unit) =
     BorderLayoutPanel().apply { layout = BorderLayout() }.apply { border = JBUI.Borders.empty(1, 2) }
-        .apply { withMinimumHeight(JBUI.scale(30)) }.apply { withPreferredHeight(JBUI.scale(30)) }.apply { configure() }
+        .apply { configure() }
 
-@Suppress("DEPRECATION")
 internal fun horizontalPanel(vararg components: JComponent) =
-    JPanel().apply { layout = com.intellij.ide.plugins.newui.HorizontalLayout(0) }
-        .apply { border = JBUI.Borders.empty() }.apply { components.forEach(::add) }
+    JPanel().apply { layout = ListLayout.horizontal(0) }.apply { border = JBUI.Borders.empty() }
+        .apply { components.forEach(::add) }
 
-internal fun horizontalSplitPanel(proportionKey: String, proportion: Float, configure: OnePixelSplitter.() -> Unit) =
-    OnePixelSplitter(false, proportionKey, proportion).apply { configure() }
+internal fun horizontalSplitPanel(
+    proportionKey: @NonNls String, proportion: Float, configure: OnePixelSplitter.() -> Unit
+) = OnePixelSplitter(false, proportionKey, proportion).apply { configure() }
 
 internal fun <T> cardPanel(createPanel: (T) -> JComponent) = object : CardLayoutPanel<T, T, JComponent>() {
     override fun prepare(key: T) = key
     override fun create(ui: T) = createPanel(ui)
-}
-
-internal fun <T, C : CardLayoutPanel<T, *, *>> C.bind(property: ObservableProperty<T>): C = apply {
-    select(property.get(), true)
-    property.afterChange { select(it, true) }
-}
-
-internal fun <C : JBLoadingPanel> C.bind(property: ObservableBooleanProperty): C = apply {
-    if (property.get()) {
-        startLoading()
-    } else {
-        stopLoading()
-    }
-    property.afterSet { startLoading() }
-    property.afterReset { stopLoading() }
 }
 
 internal fun toggleAction(property: ObservableMutableProperty<Boolean>): ToggleAction =
