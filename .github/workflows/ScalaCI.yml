@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
       - uses: coursier/cache-action@v7          
@@ -29,11 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
       - uses: coursier/cache-action@v7          
@@ -44,11 +44,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
       - uses: coursier/cache-action@v7
@@ -59,21 +59,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
           cache: sbt
       - uses: sbt/setup-sbt@v1
       - uses: coursier/cache-action@v7          
-      # - name: Check Binary Compatibility
-      #   run: sbt runPluginVerifier
+      - name: Check Binary Compatibility
+        run: sbt runPluginVerifier
 
   
   ci:
     runs-on: ubuntu-latest
-    needs: [ build, lint, test, verification]
+    needs: [ build, lint, test ]
     steps:
       - name: Aggregate outcomes
         run: echo "build succeeded"        

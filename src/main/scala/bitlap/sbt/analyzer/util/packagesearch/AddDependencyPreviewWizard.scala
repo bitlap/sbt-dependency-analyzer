@@ -26,8 +26,6 @@ class AddDependencyPreviewWizard(
   val elementToAdd: Any                                       = elem
   var resultFileLine: Option[DependencyOrRepositoryPlaceInfo] = None
 
-  override def getHelpID: String = null
-
   def search(): Option[DependencyOrRepositoryPlaceInfo] = {
     if (!showAndGet()) {
       return None
