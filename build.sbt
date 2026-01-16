@@ -1,6 +1,6 @@
 import org.jetbrains.sbtidea.Keys.*
 import org.jetbrains.sbtidea.verifier.FailureLevel
-
+import org.jetbrains.sbtidea.runIdea.CustomIntellijVMOptions
 lazy val scala3Version         = "3.7.4"
 lazy val logbackVersion        = "1.5.24"
 lazy val graphvizVersion       = "0.18.1"
@@ -69,10 +69,11 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
     Global / intellijAttachSources             := true,
     buildIntellijOptionsIndex                  := {},
     intellijPlugins ++= Seq("com.intellij.java", "org.intellij.scala").map(_.toPlugin),
-    intellijVMOptions := intellijVMOptions.value.copy(
-      xmx = 2048,
-      xms = 256,
-      defaultOptions = intellijVMOptions.value.defaultOptions ++ Seq(
+    useNewVmOptions := true,
+    customIntellijVMOptions := customIntellijVMOptions.value.copy(
+      xmx = Some(2048),
+      xms = Some(256),
+      extraOptions = customIntellijVMOptions.value.extraOptions ++ Seq(
         "--add-exports=java.management/sun.management=ALL-UNNAMED",
         "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED"
       )
