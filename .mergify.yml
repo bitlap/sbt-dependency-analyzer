@@ -4,7 +4,7 @@ queue_rules:
       - "-draft"
     merge_method: merge
     update_method: rebase
-    
+
 pull_request_rules:
   - name: assign and label scala-steward's PRs
     conditions:
@@ -17,7 +17,6 @@ pull_request_rules:
         users: ["@bitlap/sbt-dependency-analyzer"]
       label:
         add: ["type: dependencies"]
-        
   - name: merge Scala Steward's PRs
     conditions:
       - "check-success=ci"
@@ -29,3 +28,5 @@ pull_request_rules:
     actions:
       queue:
         name: default
+merge_protections_settings:
+  reporting_method: check-runs
