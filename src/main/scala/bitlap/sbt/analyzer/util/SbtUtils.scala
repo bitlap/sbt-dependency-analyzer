@@ -33,6 +33,9 @@ import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar
 
 object SbtUtils {
 
+  val least  = SbtVersion("1.4.0")
+  val latest = SbtVersion.Latest.Sbt_LatestIncludingUnreleased
+
   private val LOG = Logger.getInstance(getClass)
 
   /** sbt: com.softwaremill.sttp.shared:zio_3:1.3.7:jar

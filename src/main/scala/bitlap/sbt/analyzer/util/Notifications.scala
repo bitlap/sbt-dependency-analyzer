@@ -31,12 +31,9 @@ object Notifications {
   private lazy val NotificationGroup =
     NotificationGroupManager.getInstance().getNotificationGroup("Sbt.DependencyAnalyzer.Notification")
 
-  private val least  = SbtVersion("1.4.0")
-  private val latest = SbtVersion.Latest.Sbt_LatestIncludingUnreleased
-
   private def getSdapText(project: Project): String = {
     val sbtVersion = SbtUtils.getSbtVersion(project)
-    val line       = if (sbtVersion.inRange(least, latest)) {
+    val line       = if (sbtVersion.inRange(SbtUtils.least, SbtUtils.latest)) {
       "addDependencyTreePlugin"
     } else {
       // If the SBT version is less than 0.13.0, an error may occur
