@@ -67,8 +67,8 @@ jobs:
           cache: sbt
       - uses: sbt/setup-sbt@v1
       - uses: coursier/cache-action@v7          
-      # - name: Check Binary Compatibility
-      #   run: sbt runPluginVerifier
+      - name: Check Binary Compatibility
+        run: sbt runPluginVerifier
 
   
   ci:
