@@ -14,9 +14,9 @@ import util.SbtUtils
 final class RefreshSnapshotsTask extends SbtShellOutputAnalysisTask[Unit]:
 
   override def executeCommand(project: Project): Unit =
-    val sbtVersion = SbtUtils.getSbtVersion(project).binaryVersion
+    val sbtVersion = SbtUtils.getSbtVersion(project)
     // see https://www.scala-sbt.org/1.x/docs/Dependency-Management-Flow.html#Notes+on+SNAPSHOTs
-    if (sbtVersion.major(2) >= Version("1.3")) {
+    if (sbtVersion.inRange(SbtUtils.least, SbtUtils.latest)) {
       getCommandOutputLines(
         project,
         """
