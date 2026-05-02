@@ -1,18 +1,18 @@
-import org.jetbrains.sbtidea.Keys.*
-import org.jetbrains.sbtidea.runIdea.CustomIntellijVMOptions
+import org.jetbrains.sbtidea.Keys._
 import org.jetbrains.sbtidea.verifier.FailureLevel
 lazy val scala3Version         = "3.8.3"
 lazy val logbackVersion        = "1.5.32"
 lazy val graphvizVersion       = "0.18.1"
 lazy val joorVersion           = "0.9.15"
+
 lazy val scalatestVersion      = "3.2.20"
-lazy val pluginVerifierVersion = "1.398"
-lazy val ktVersion             = "2.1.0"
+lazy val pluginVerifierVersion = "1.402"
+lazy val ktVersion             = "2.3.0"
 lazy val jbAnnotVersion        = "26.0.2"
 
 // https://youtrack.jetbrains.com/articles/IDEA-A-2100661679/IntelliJ-IDEA-2023.3-Latest-Builds
-lazy val intellijVersion = "253.29346.240"
-lazy val pluginVersion   = "0.9.0-RC1"
+lazy val intellijVersion = "261.22158.277"
+lazy val pluginVersion   = "0.10.0"
 
 ThisBuild / version := pluginVersion
 
