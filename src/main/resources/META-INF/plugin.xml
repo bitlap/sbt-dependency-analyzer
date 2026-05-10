@@ -8,7 +8,7 @@
     </vendor>
     <!-- please see https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html for description -->
     <!-- old version support, see branch idea231.x   -->
-    <idea-version since-build="253.0"/>
+    <idea-version since-build="261.0"/>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lang</depends>
@@ -138,6 +138,10 @@
 
     <change-notes>
         <![CDATA[
+            <h1>0.10.0</h1>
+            <ul>
+                <li>Support IDEA 261.x .</li>
+            </ul>        
             <h1>0.9.0-RC1</h1>
             <ul>
                 <li>Support IDEA 253.x .</li>
