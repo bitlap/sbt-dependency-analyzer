@@ -128,7 +128,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     val progressManager = ExternalSystemProgressNotificationManager.getInstance()
     progressManager.addNotificationListener(
       new ExternalSystemTaskNotificationListener() {
-        override def onEnd(id: ExternalSystemTaskId): Unit = {
+        override def onEnd(projectPath: String, id: ExternalSystemTaskId): Unit = {
           if (id.getType == ExternalSystemTaskType.RESOLVE_PROJECT && id.getProjectSystemId == SbtProjectSystem.Id) {
             // if dependencies have changed, we must delete all analysis files (.dot)
             // however, this can only be used to monitor whether the view is open
