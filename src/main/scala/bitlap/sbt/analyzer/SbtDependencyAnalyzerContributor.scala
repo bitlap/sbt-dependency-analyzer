@@ -285,9 +285,7 @@ object SbtDependencyAnalyzerContributor
     extends SettingsState.SettingsChangeListener,
       SbtReimportProject.ReimportProjectListener:
   import com.intellij.openapi.observable.properties.AtomicProperty
-  private final val dependencyIsAvailable = new AtomicProperty[Boolean](true)
 
-  // if data change
   override def onConfigurationChanged(project: Project, settingsState: SettingsState): Unit = {
     SbtReimportProject.ReimportProjectPublisher.onReimportProject(project)
   }
@@ -300,20 +298,6 @@ object SbtDependencyAnalyzerContributor
   ApplicationManager.getApplication.getMessageBus.connect().subscribe(SbtReimportProject._Topic, this)
 
   private final val hasNotified = new AtomicBoolean(false)
-
-  private def isValidFile(project: Project, file: String): Boolean = {
-    if (dependencyIsAvailable.get()) {
-      val lastModified = VfsUtil.findFile(Path.of(file), true).getTimeStamp
-      val upToDate     =
-        System.currentTimeMillis() <= lastModified + SettingsState.getSettings(project).fileCacheTimeout * 1000
-      if (!upToDate) {
-        dependencyIsAvailable.set(false)
-      }
-      dependencyIsAvailable.get()
-    } else {
-      dependencyIsAvailable.get()
-    }
-  }
 
   // ===========================================extensions==============================================================
   extension (projectDependencyNode: ProjectDependencyNode)
@@ -387,42 +371,6 @@ object SbtDependencyAnalyzerContributor
         hasNotified.compareAndSet(true, false)
       }
 
-      // if the analysis files already exist (.dot), use it directly.
-      def executeCommandOrReadExistsFile(
-        scope: DependencyScopeEnum
-      ): DependencyScopeNode =
-        val file     = moduleData.getLinkedExternalProjectPath + analysisFilePath(scope, summon[DependencyGraphType])
-        val vfsFile  = VfsUtil.findFile(Path.of(file), true)
-        val useCache = vfsFile != null && isValidFile(project, file)
-        // File cache for one hour
-        if (useCache) {
-          DependencyGraphFactory
-            .getInstance(summon[DependencyGraphType])
-            .buildDependencyTree(
-              AnalyzerContext(
-                file,
-                moduleId,
-                scope,
-                organization,
-                moduleNamePaths,
-                if (moduleIdArtifactIds.isEmpty) Map(moduleId -> module.getName)
-                else moduleIdArtifactIds
-              ),
-              createRootScopeNode(scope, project)
-            )
-        } else {
-          dependencyIsAvailable.set(true)
-          SbtShellDependencyAnalysisTask.dependencyDotTask.executeCommand(
-            project,
-            moduleData,
-            scope,
-            organization,
-            moduleNamePaths,
-            moduleIdArtifactIds
-          )
-        }
-      end executeCommandOrReadExistsFile
-
       val result = ListBuffer[DependencyScopeNode]()
       import scala.util.control.Breaks.*
       // break, no more commands will be executed
@@ -436,7 +384,14 @@ object SbtDependencyAnalyzerContributor
             else if (settings.disableAnalyzeTest && scope == DependencyScopeEnum.Test) {}
             else if (settings.disableAnalyzeCompile && scope == DependencyScopeEnum.Compile) {}
             else {
-              node = executeCommandOrReadExistsFile(scope)
+              node = SbtShellDependencyAnalysisTask.dependencyDotTask.executeCommand(
+                project,
+                moduleData,
+                scope,
+                organization,
+                moduleNamePaths,
+                moduleIdArtifactIds
+              )
             }
             if (node != null) {
               result.append(node)

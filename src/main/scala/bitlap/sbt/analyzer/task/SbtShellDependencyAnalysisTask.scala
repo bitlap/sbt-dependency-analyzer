@@ -3,6 +3,8 @@ package sbt
 package analyzer
 package task
 
+import java.nio.file.Path
+
 import scala.concurrent.*
 
 import org.jetbrains.sbt.shell.SbtShellCommunication
@@ -10,6 +12,7 @@ import org.jetbrains.sbt.shell.SbtShellCommunication
 import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.model.project.dependencies.DependencyScopeNode
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VfsUtil
 
 import model.*
 import parsing.*
@@ -40,7 +43,16 @@ trait SbtShellDependencyAnalysisTask:
     val moduleId           = moduleData.getId.split(" ")(0)
     val promise            = Promise[Boolean]()
     val file               = moduleData.getLinkedExternalProjectPath + analysisFilePath(scope, dependencyGraphType)
-    val result             = shellCommunication
+
+    val vfsFile = VfsUtil.findFile(Path.of(file), true)
+    if (vfsFile != null) {
+      val lastModified = vfsFile.getTimeStamp
+      if (lastModified > System.currentTimeMillis() - Constants.CACHE_TIMEOUT) {
+        return buildNodeFunc(file)
+      }
+    }
+
+    val result = shellCommunication
       .command(
         getScopedCommandKey(moduleId, scope, dependencyGraphType.cmd),
         new StringBuilder(),

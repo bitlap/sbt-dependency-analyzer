@@ -3,12 +3,15 @@ package sbt
 package analyzer
 package parsing
 
+import java.nio.file.Path
+
 import scala.jdk.CollectionConverters.*
 
 import bitlap.sbt.analyzer.model.*
 import bitlap.sbt.analyzer.util.DependencyUtils.*
 
 import com.intellij.openapi.externalSystem.model.project.dependencies.*
+import com.intellij.openapi.vfs.VfsUtil
 
 import guru.nidi.graphviz.model.{ Graph as _, * }
 
@@ -127,35 +130,57 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
 
   /** parse dot file, get graph data
    */
-  private def getDependencyRelations(context: AnalyzerContext): Option[Dependencies] =
-    val mutableGraph: MutableGraph = DotUtils.parseAsGraph(context)
-    if (mutableGraph == null) None
-    else
-      val graphNodes: java.util.Collection[MutableNode] = mutableGraph.nodes()
-      val links: java.util.Collection[Link]             = mutableGraph.edges()
+  private def getDependencyRelations(context: AnalyzerContext): Option[Dependencies] = {
+    val currentTime = System.currentTimeMillis()
 
-      val nodes = graphNodes.asScala.map { graphNode =>
-        graphNode.name().value() -> getArtifactInfoFromDisplayName(graphNode.name().value())
-      }.collect { case (name, Some(value)) =>
-        name -> value
-      }.toMap
+    // 检查缓存
+    DotFileCache.getCachedResult(context.analysisFile, currentTime) match {
+      case Some(cachedResult) =>
+        // 缓存命中，直接返回
+        cachedResult
+      case None =>
+        // 缓存未命中，解析文件
+        val mutableGraph: MutableGraph = DotUtils.parseAsGraph(context)
+        val result                     =
+          if (mutableGraph == null) None
+          else {
+            val graphNodes: java.util.Collection[MutableNode] = mutableGraph.nodes()
+            val links: java.util.Collection[Link]             = mutableGraph.edges()
 
-      val idMapping: Map[String, Int] = nodes.map(kv => kv._2.toString -> kv._2.id)
+            val nodes = graphNodes.asScala.map { graphNode =>
+              graphNode.name().value() -> getArtifactInfoFromDisplayName(graphNode.name().value())
+            }.collect { case (name, Some(value)) =>
+              name -> value
+            }.toMap
 
-      val edges = links.asScala.map { l =>
-        val label = l.get("label").asInstanceOf[String]
-        Relation(
-          idMapping.getOrElse(l.from().name().value(), 0),
-          idMapping.getOrElse(l.to().name().value(), 0),
-          label
-        )
-      }
+            val idMapping: Map[String, Int] = nodes.map(kv => kv._2.toString -> kv._2.id)
 
-      Some(
-        Dependencies(
-          nodes.values.toList,
-          edges.toList
-        )
-      )
+            val edges = links.asScala.map { l =>
+              val label = l.get("label").asInstanceOf[String]
+              Relation(
+                idMapping.getOrElse(l.from().name().value(), 0),
+                idMapping.getOrElse(l.to().name().value(), 0),
+                label
+              )
+            }
+
+            Some(
+              Dependencies(
+                nodes.values.toList,
+                edges.toList
+              )
+            )
+          }
+
+        val vfsFile = VfsUtil.findFile(Path.of(context.analysisFile), true)
+
+        val fileSize = if (vfsFile != null) {
+          vfsFile.getLength
+        } else 0L
+        DotFileCache.cacheResult(context.analysisFile, result, fileSize, currentTime)
+
+        result
+    }
+  }
 
 end DotDependencyGraphParser

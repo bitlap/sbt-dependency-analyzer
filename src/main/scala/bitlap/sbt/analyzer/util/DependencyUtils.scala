@@ -41,7 +41,7 @@ object DependencyUtils {
   )
 
   def getDeclaredDependency(module: OpenapiModule): List[DeclaredDependency] = {
-    SbtDependencyUtils.declaredDependencies(module).asScala.toList
+    DependencyDeclarationCache.getDeclaredDependencyWithCache(module)
   }
 
   /** Handles the processing of ProjectDependencyNodeImpl objects by converting them to a unified DependencyNode type

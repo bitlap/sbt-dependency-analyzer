@@ -19,6 +19,8 @@ object Constants:
 
   final val INTERVAL_TIMEOUT = 1010.milliseconds
 
+  final val CACHE_TIMEOUT = 60 * 60 * 1000L
+
   final val CHANGE_NOTES_SEPARATOR = "<!-- @@ -->"
 
 end Constants
