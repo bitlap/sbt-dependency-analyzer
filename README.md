@@ -77,7 +77,6 @@ The plugin may fail to correctly parse inter-module dependencies if it cannot de
 
 1. The plugin executes several sbt commands (`organization`, `moduleName`, `dependencyDot`, `reload`, `update`) to gather dependency information. Significant optimizations are in place to minimize the number and impact of these commands.
 2. The plugin has replicated the Kotlin code from the [intellij-community](https://github.com/JetBrains/intellij-community) project on the UI and compiles it using the [kotlin-plugin](https://github.com/bitlap/kotlin-plugin).
-3. **Performance Optimizations**: The plugin includes multiple caching layers to improve responsiveness:
 
 ## 🤝 Contributing
 
