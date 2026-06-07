@@ -22,6 +22,7 @@ import org.jetbrains.sbt.project.SbtProjectSystem
 import org.jetbrains.sbt.project.data.*
 import org.jetbrains.sbt.project.module.*
 
+import com.intellij.execution.process.ProcessOutputType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
@@ -131,30 +132,21 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     val progressManager = ExternalSystemProgressNotificationManager.getInstance()
     progressManager.addNotificationListener(
       new ExternalSystemTaskNotificationListener() {
-        private val isProcessing = new AtomicBoolean(false)
+        override def onTaskOutput(id: ExternalSystemTaskId, text: String, outputType: ProcessOutputType): Unit = {}
+        override def onEnd(projectPath: String, id: ExternalSystemTaskId): Unit                                = {
+          if (id.getType == ExternalSystemTaskType.RESOLVE_PROJECT && id.getProjectSystemId == SbtProjectSystem.Id) {
+            // if dependencies have changed, we must delete all analysis files (.dot)
+            // however, this can only be used to monitor whether the view is open
+            projects
+              .values()
+              .asScala
+              .map(d => d.getLinkedExternalProjectPath)
+              .foreach(deleteExistAnalysisFiles)
 
-        override def onEnd(projectPath: String, id: ExternalSystemTaskId): Unit = {
-          if (isProcessing.compareAndSet(false, true)) {
-            try {
-              if (
-                id.getType == ExternalSystemTaskType.RESOLVE_PROJECT && id.getProjectSystemId == SbtProjectSystem.Id
-              ) {
-                // if dependencies have changed, we must delete all analysis files (.dot)
-                // however, this can only be used to monitor whether the view is open
-                projects
-                  .values()
-                  .asScala
-                  .map(d => d.getLinkedExternalProjectPath)
-                  .foreach(deleteExistAnalysisFiles)
-
-                projects.clear()
-                configurationNodesMap.clear()
-                dependencyMap.clear()
-                listener.invoke()
-              }
-            } finally {
-              isProcessing.set(false)
-            }
+            projects.clear()
+            configurationNodesMap.clear()
+            dependencyMap.clear()
+            listener.invoke()
           }
         }
       },
