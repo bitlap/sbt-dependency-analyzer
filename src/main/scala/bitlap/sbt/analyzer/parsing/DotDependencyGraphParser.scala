@@ -26,7 +26,7 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
 
   override val dependencyGraphType: DependencyGraphType = DependencyGraphType.Dot
 
-  /** transforming dependencies data into view data
+  /** Transforming dependencies data into view data.
    */
   private def toDependencyNode(dep: ArtifactInfo): DependencyNode = {
     // module dependency
@@ -62,7 +62,11 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
     (relationLabelsMap, parentChildrenMap.toMap)
   }
 
-  /** build tree for dependency analyzer view
+  /** Build dependency tree structure for the analyzer view.
+   *
+   *  This method parses the DOT file, extracts dependency relationships, and constructs a hierarchical tree starting
+   *  from the root scope node. It handles both direct and transitive dependencies, filtering out non-direct children
+   *  appropriately.
    */
   override def buildDependencyTree(context: AnalyzerContext, root: DependencyScopeNode): DependencyScopeNode = {
     val data                       = getDependencyRelations(context)
@@ -88,13 +92,13 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
     root
   }
 
-  /** This is important to filter out non-direct dependencies
+  /** This is important to filter out non-direct dependencies.
    */
   private def filterDirectChildren(parent: DependencyNode, childId: Int, relations: List[Relation]) = {
     relations.exists(r => r.head == parent.getId && r.tail == childId)
   }
 
-  /** Recursively create and add child nodes to root
+  /** Recursively create and add child nodes to root.
    */
   private def buildChildrenNodes(
     parentNode: DependencyNode,
@@ -128,7 +132,8 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
     appendChildrenAndFixProjectNodes(parentNode, childNodes, context)
   }
 
-  /** parse dot file, get graph data
+  /** Parse DOT file and extract dependency graph data. In test mode, uses Java NIO for file operations. In IDE mode,
+   *  uses IntelliJ VFS.
    */
   private def getDependencyRelations(context: AnalyzerContext): Option[Dependencies] = {
     val currentTime = System.currentTimeMillis()
