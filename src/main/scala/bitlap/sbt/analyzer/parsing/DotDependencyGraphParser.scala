@@ -169,11 +169,23 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
             )
           }
 
-        val vfsFile = VfsUtil.findFile(Path.of(context.analysisFile), true)
-
-        val fileSize = if (vfsFile != null) {
-          vfsFile.getLength
-        } else 0L
+        // Get file size: use Java NIO in test mode, VFS in IDE mode
+        val fileSize = if (context.isTest) {
+          // Test environment: use Java NIO to avoid IntelliJ Platform dependency
+          try {
+            java.nio.file.Files.size(Path.of(context.analysisFile))
+          } catch {
+            case _: Exception => 0L
+          }
+        } else {
+          // IDE environment: use VFS for consistency with other IDE operations
+          try {
+            val vfsFile = VfsUtil.findFile(Path.of(context.analysisFile), true)
+            if (vfsFile != null) vfsFile.getLength else 0L
+          } catch {
+            case _: Exception => 0L
+          }
+        }
         DotFileCache.cacheResult(context.analysisFile, result, fileSize, currentTime)
 
         result
