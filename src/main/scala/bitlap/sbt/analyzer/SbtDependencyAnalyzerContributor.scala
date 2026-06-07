@@ -99,7 +99,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
                 projects.put(externalProject, new ModuleNode(moduleDataNode.getData))
               }
             } else {
-              logger.warn("Can not find root moduleData")
+              logger.warn(f"Can not find root moduleData: {project.getBasePath}")
             }
           }
           val moduleDataList =

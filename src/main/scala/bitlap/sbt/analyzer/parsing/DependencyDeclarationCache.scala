@@ -26,12 +26,13 @@ object DependencyDeclarationCache {
     val moduleKey = module.getName + "@" + module.getModuleFilePath
 
     Option(cacheWithTTL.get(moduleKey)) match {
-      case Some(entry) if System.currentTimeMillis() - entry.timestamp < Constants.CACHE_TIMEOUT =>
+      case Some(entry) if System.currentTimeMillis() - entry.timestamp < Constants.DECLARED_CACHE_TIMEOUT =>
         entry.dependencies
       case _ =>
         val dependencies = SbtDependencyUtils.declaredDependencies(module).asScala.toList
-
-        cacheWithTTL.put(moduleKey, CacheEntry(dependencies, System.currentTimeMillis()))
+        if (dependencies.nonEmpty) {
+          cacheWithTTL.put(moduleKey, CacheEntry(dependencies, System.currentTimeMillis()))
+        }
 
         dependencies
     }
