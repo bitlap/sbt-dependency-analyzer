@@ -138,6 +138,11 @@
 
     <change-notes>
         <![CDATA[
+            <h1>0.11.0</h1>
+            <ul>
+                <li>Support IDEA 262.x .</li>
+                <li>Improve code .</li>
+            </ul>                
             <h1>0.10.0</h1>
             <ul>
                 <li>Support IDEA 261.x .</li>

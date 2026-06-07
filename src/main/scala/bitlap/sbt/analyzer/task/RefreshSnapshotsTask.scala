@@ -3,8 +3,6 @@ package sbt
 package analyzer
 package task
 
-import org.jetbrains.plugins.scala.project.Version
-
 import com.intellij.openapi.project.Project
 
 import util.SbtUtils

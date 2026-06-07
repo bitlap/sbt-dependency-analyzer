@@ -15,9 +15,12 @@ abstract class BaseProjectActivity(private val runOnlyOnce: Boolean = false) ext
     ) {
       return continuation
     }
-    // FIXME: should use continuation
+
     veryFirstProjectOpening = false
     if (onBeforeRunActivity(project)) {
+      // Note: onRunActivity is executed synchronously.
+      // All current implementations are lightweight operations (version check, cache cleanup).
+      // If async operations are needed in the future, use coroutine with continuation.
       onRunActivity(project)
     }
     continuation

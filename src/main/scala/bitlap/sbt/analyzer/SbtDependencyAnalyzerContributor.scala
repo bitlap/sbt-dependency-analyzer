@@ -16,15 +16,16 @@ import bitlap.sbt.analyzer.task.*
 import bitlap.sbt.analyzer.util.*
 import bitlap.sbt.analyzer.util.DependencyUtils.*
 
-import org.jetbrains.plugins.scala.project.ModuleExt
 import org.jetbrains.sbt.SbtUtil
 import org.jetbrains.sbt.project.*
 import org.jetbrains.sbt.project.SbtProjectSystem
 import org.jetbrains.sbt.project.data.*
 import org.jetbrains.sbt.project.module.*
 
+import com.intellij.execution.process.ProcessOutputType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.dependency.analyzer.{ DependencyAnalyzerDependency as Dependency, * }
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency.Data
 import com.intellij.openapi.externalSystem.model.*
@@ -35,13 +36,14 @@ import com.intellij.openapi.externalSystem.service.notification.ExternalSystemPr
 import com.intellij.openapi.externalSystem.service.project.ProjectDataManager
 import com.intellij.openapi.externalSystem.util.*
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VfsUtil
 
 import kotlin.jvm.functions
 
 final class SbtDependencyAnalyzerContributor(project: Project) extends DependencyAnalyzerContributor {
 
   import SbtDependencyAnalyzerContributor.*
+
+  private val logger = Logger.getInstance(this.getClass)
 
   @volatile
   private var organization: String = scala.compiletime.uninitialized
@@ -96,6 +98,8 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
               moduleDataNodeOpt.foreach { moduleDataNode =>
                 projects.put(externalProject, new ModuleNode(moduleDataNode.getData))
               }
+            } else {
+              logger.warn(f"Can not find root moduleData: ${project.getBasePath}")
             }
           }
           val moduleDataList =
@@ -128,7 +132,8 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     val progressManager = ExternalSystemProgressNotificationManager.getInstance()
     progressManager.addNotificationListener(
       new ExternalSystemTaskNotificationListener() {
-        override def onEnd(id: ExternalSystemTaskId): Unit = {
+        override def onTaskOutput(id: ExternalSystemTaskId, text: String, outputType: ProcessOutputType): Unit = {}
+        override def onEnd(projectPath: String, id: ExternalSystemTaskId): Unit                                = {
           if (id.getType == ExternalSystemTaskType.RESOLVE_PROJECT && id.getProjectSystemId == SbtProjectSystem.Id) {
             // if dependencies have changed, we must delete all analysis files (.dot)
             // however, this can only be used to monitor whether the view is open
@@ -285,9 +290,7 @@ object SbtDependencyAnalyzerContributor
     extends SettingsState.SettingsChangeListener,
       SbtReimportProject.ReimportProjectListener:
   import com.intellij.openapi.observable.properties.AtomicProperty
-  private final val dependencyIsAvailable = new AtomicProperty[Boolean](true)
 
-  // if data change
   override def onConfigurationChanged(project: Project, settingsState: SettingsState): Unit = {
     SbtReimportProject.ReimportProjectPublisher.onReimportProject(project)
   }
@@ -300,20 +303,6 @@ object SbtDependencyAnalyzerContributor
   ApplicationManager.getApplication.getMessageBus.connect().subscribe(SbtReimportProject._Topic, this)
 
   private final val hasNotified = new AtomicBoolean(false)
-
-  private def isValidFile(project: Project, file: String): Boolean = {
-    if (dependencyIsAvailable.get()) {
-      val lastModified = VfsUtil.findFile(Path.of(file), true).getTimeStamp
-      val upToDate     =
-        System.currentTimeMillis() <= lastModified + SettingsState.getSettings(project).fileCacheTimeout * 1000
-      if (!upToDate) {
-        dependencyIsAvailable.set(false)
-      }
-      dependencyIsAvailable.get()
-    } else {
-      dependencyIsAvailable.get()
-    }
-  }
 
   // ===========================================extensions==============================================================
   extension (projectDependencyNode: ProjectDependencyNode)
@@ -387,42 +376,6 @@ object SbtDependencyAnalyzerContributor
         hasNotified.compareAndSet(true, false)
       }
 
-      // if the analysis files already exist (.dot), use it directly.
-      def executeCommandOrReadExistsFile(
-        scope: DependencyScopeEnum
-      ): DependencyScopeNode =
-        val file     = moduleData.getLinkedExternalProjectPath + analysisFilePath(scope, summon[DependencyGraphType])
-        val vfsFile  = VfsUtil.findFile(Path.of(file), true)
-        val useCache = vfsFile != null && isValidFile(project, file)
-        // File cache for one hour
-        if (useCache) {
-          DependencyGraphFactory
-            .getInstance(summon[DependencyGraphType])
-            .buildDependencyTree(
-              AnalyzerContext(
-                file,
-                moduleId,
-                scope,
-                organization,
-                moduleNamePaths,
-                if (moduleIdArtifactIds.isEmpty) Map(moduleId -> module.getName)
-                else moduleIdArtifactIds
-              ),
-              createRootScopeNode(scope, project)
-            )
-        } else {
-          dependencyIsAvailable.set(true)
-          SbtShellDependencyAnalysisTask.dependencyDotTask.executeCommand(
-            project,
-            moduleData,
-            scope,
-            organization,
-            moduleNamePaths,
-            moduleIdArtifactIds
-          )
-        }
-      end executeCommandOrReadExistsFile
-
       val result = ListBuffer[DependencyScopeNode]()
       import scala.util.control.Breaks.*
       // break, no more commands will be executed
@@ -436,7 +389,14 @@ object SbtDependencyAnalyzerContributor
             else if (settings.disableAnalyzeTest && scope == DependencyScopeEnum.Test) {}
             else if (settings.disableAnalyzeCompile && scope == DependencyScopeEnum.Compile) {}
             else {
-              node = executeCommandOrReadExistsFile(scope)
+              node = SbtShellDependencyAnalysisTask.dependencyDotTask.executeCommand(
+                project,
+                moduleData,
+                scope,
+                organization,
+                moduleNamePaths,
+                moduleIdArtifactIds
+              )
             }
             if (node != null) {
               result.append(node)

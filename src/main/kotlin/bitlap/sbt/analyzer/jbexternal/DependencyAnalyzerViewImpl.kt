@@ -1,16 +1,29 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package bitlap.sbt.analyzer.jbexternal
 
-import java.awt.BorderLayout
-import javax.swing.JComponent
-import javax.swing.tree.DefaultMutableTreeNode
-import javax.swing.tree.DefaultTreeModel
-import java.util.Locale
-
-import bitlap.sbt.analyzer.jbexternal.util.*
+import bitlap.sbt.analyzer.jbexternal.util.DependencyGroup
 import bitlap.sbt.analyzer.jbexternal.util.DependencyGroup.Companion.hasWarnings
+import bitlap.sbt.analyzer.jbexternal.util.DependencyList
+import bitlap.sbt.analyzer.jbexternal.util.DependencyTree
+import bitlap.sbt.analyzer.jbexternal.util.ExternalProjectSelector
+import bitlap.sbt.analyzer.jbexternal.util.ProjectUtil
+import bitlap.sbt.analyzer.jbexternal.util.ScopeItem
+import bitlap.sbt.analyzer.jbexternal.util.SearchScopeSelector
+import bitlap.sbt.analyzer.jbexternal.util.UsagesTree
+import bitlap.sbt.analyzer.jbexternal.util.action
+import bitlap.sbt.analyzer.jbexternal.util.asActionButton
+import bitlap.sbt.analyzer.jbexternal.util.cardPanel
+import bitlap.sbt.analyzer.jbexternal.util.collapseTreeAction
+import bitlap.sbt.analyzer.jbexternal.util.expandTreeAction
 import bitlap.sbt.analyzer.jbexternal.util.getDisplayText
-
+import bitlap.sbt.analyzer.jbexternal.util.horizontalPanel
+import bitlap.sbt.analyzer.jbexternal.util.horizontalSplitPanel
+import bitlap.sbt.analyzer.jbexternal.util.label
+import bitlap.sbt.analyzer.jbexternal.util.popupActionGroup
+import bitlap.sbt.analyzer.jbexternal.util.separator
+import bitlap.sbt.analyzer.jbexternal.util.toggleAction
+import bitlap.sbt.analyzer.jbexternal.util.toolWindowPanel
+import bitlap.sbt.analyzer.jbexternal.util.toolbarPanel
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -18,9 +31,7 @@ import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
 import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.application.runInEdt
-import com.intellij.openapi.module.Module
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectNotificationAware
 import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectNotificationAware.Companion.isNotificationVisibleProperty
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerExtension
@@ -31,13 +42,21 @@ import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys
 import com.intellij.openapi.externalSystem.model.ProjectSystemId
 import com.intellij.openapi.externalSystem.ui.ExternalSystemIconProvider
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle
+import com.intellij.openapi.module.Module
 import com.intellij.openapi.observable.operation.core.AtomicOperationTrace
 import com.intellij.openapi.observable.operation.core.getOperationInProgressProperty
 import com.intellij.openapi.observable.operation.core.isOperationInProgress
 import com.intellij.openapi.observable.operation.core.withCompletedOperation
 import com.intellij.openapi.observable.properties.AtomicProperty
-import com.intellij.openapi.observable.properties.ObservableProperty
-import com.intellij.openapi.observable.util.*
+import com.intellij.openapi.observable.util.and
+import com.intellij.openapi.observable.util.bind
+import com.intellij.openapi.observable.util.bindBooleanStorage
+import com.intellij.openapi.observable.util.bindEmptyText
+import com.intellij.openapi.observable.util.bindEnabled
+import com.intellij.openapi.observable.util.bindLoading
+import com.intellij.openapi.observable.util.bindSelected
+import com.intellij.openapi.observable.util.bindVisible
+import com.intellij.openapi.observable.util.not
 import com.intellij.openapi.progress.util.BackgroundTaskUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.addPreferredFocusedComponent
@@ -47,6 +66,35 @@ import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLoadingPanel
 import com.intellij.util.concurrency.AppExecutorUtil
+import java.awt.BorderLayout
+import java.util.Locale
+import javax.swing.JComponent
+import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.DefaultTreeModel
+import kotlin.collections.ArrayDeque
+import kotlin.collections.ArrayList
+import kotlin.collections.Iterable
+import kotlin.collections.LinkedHashMap
+import kotlin.collections.List
+import kotlin.collections.MutableList
+import kotlin.collections.Set
+import kotlin.collections.all
+import kotlin.collections.asSequence
+import kotlin.collections.associate
+import kotlin.collections.contains
+import kotlin.collections.emptyList
+import kotlin.collections.filter
+import kotlin.collections.find
+import kotlin.collections.firstOrNull
+import kotlin.collections.flatMap
+import kotlin.collections.getOrPut
+import kotlin.collections.groupBy
+import kotlin.collections.isNotEmpty
+import kotlin.collections.joinToString
+import kotlin.collections.map
+import kotlin.collections.singleOrNull
+import kotlin.collections.sortedWith
+import kotlin.collections.toSet
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency as Dependency
 
 /**
