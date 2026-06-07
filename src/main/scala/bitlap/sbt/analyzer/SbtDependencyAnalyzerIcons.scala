@@ -2,12 +2,12 @@ package bitlap.sbt.analyzer
 
 import javax.swing.Icon
 
-import com.intellij.openapi.util.IconLoader
+import bitlap.sbt.analyzer.jbexternal.util.SbtDependencyAnalyzerIconKt
 
 /** icons
  */
 object SbtDependencyAnalyzerIcons:
 
-  val ICON: Icon = IconLoader.getIcon("/icons/sbt_dependency_analyzer.svg", SbtDependencyAnalyzerIcons.getClass)
+  val ICON: Icon = SbtDependencyAnalyzerIconKt.getIcon()
 
 end SbtDependencyAnalyzerIcons

@@ -18,6 +18,7 @@ import com.intellij.ui.components.DropDownLink
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.panels.ListLayout
 import com.intellij.ui.speedSearch.ListWithFilter
+import com.intellij.util.ui.EmptyIcon
 import com.intellij.util.ui.JBUI
 import java.awt.Component
 import javax.swing.*
@@ -28,11 +29,17 @@ internal class ExternalProjectSelector(
     iconProvider: ExternalSystemIconProvider,
 ) : JPanel() {
 
+    private val projectIcon = if (iconProvider.projectIcon is EmptyIcon) {
+        getIcon()
+    } else {
+        iconProvider.projectIcon
+    }
+
     init {
-        val dropDownLink = ExternalProjectDropDownLink(property, externalProjects, iconProvider).apply {
+        val dropDownLink = ExternalProjectDropDownLink(property, externalProjects, projectIcon).apply {
             border = JBUI.Borders.empty(BORDER, ICON_TEXT_GAP / 2, BORDER, BORDER)
         }
-        val label = JLabel(iconProvider.projectIcon).apply {
+        val label = JLabel(projectIcon).apply {
             border = JBUI.Borders.empty(BORDER, BORDER, BORDER, ICON_TEXT_GAP / 2)
         }.apply { labelFor = dropDownLink }
 
@@ -45,7 +52,7 @@ internal class ExternalProjectSelector(
 
 private class ExternalProjectPopupContent(
     externalProjects: List<DependencyAnalyzerProject>,
-    iconProvider: ExternalSystemIconProvider,
+    projectIcon: Icon,
 ) {
 
     val component: JComponent
@@ -56,7 +63,7 @@ private class ExternalProjectPopupContent(
         val elements = externalProjects.sortedWith(Comparator.comparing({ it.title }, NaturalComparator.INSTANCE))
         list = JBList(elements).apply {
             border = emptyListBorder()
-            cellRenderer = ExternalProjectRenderer(iconProvider)
+            cellRenderer = ExternalProjectRenderer(projectIcon)
             selectionMode = ListSelectionModel.SINGLE_SELECTION
             ListUtil.installAutoSelectOnMouseMove(this)
         }
@@ -73,8 +80,9 @@ private class ExternalProjectPopupContent(
 }
 
 private class ExternalProjectRenderer(
-    private val iconProvider: ExternalSystemIconProvider,
+    private val projectIcon: Icon,
 ) : ListCellRenderer<DependencyAnalyzerProject?> {
+
 
     override fun getListCellRendererComponent(
         list: JList<out DependencyAnalyzerProject?>,
@@ -83,9 +91,8 @@ private class ExternalProjectRenderer(
         isSelected: Boolean,
         cellHasFocus: Boolean,
     ): Component {
-        return JLabel().apply { if (value != null) icon = iconProvider.projectIcon }
-            .apply { if (value != null) text = value.title }.apply { border = emptyListCellBorder(list, index) }
-            .apply { iconTextGap = JBUI.scale(ICON_TEXT_GAP) }
+        return JLabel().apply { if (value != null) icon = projectIcon }.apply { if (value != null) text = value.title }
+            .apply { border = emptyListCellBorder(list, index) }.apply { iconTextGap = JBUI.scale(ICON_TEXT_GAP) }
             .apply { background = if (isSelected) list.selectionBackground else list.background }
             .apply { foreground = if (isSelected) list.selectionForeground else list.foreground }
             .apply { isOpaque = true }.apply { isEnabled = list.isEnabled }.apply { font = list.font }
@@ -95,12 +102,12 @@ private class ExternalProjectRenderer(
 private class ExternalProjectDropDownLink(
     property: ObservableMutableProperty<DependencyAnalyzerProject?>,
     externalProjects: List<DependencyAnalyzerProject>,
-    private val iconProvider: ExternalSystemIconProvider,
+    private val projectIcon: Icon,
 ) : DropDownLink<DependencyAnalyzerProject?>(
-    property.get(), { createPopup(externalProjects, iconProvider, it::selectedItem.setter) }) {
+    property.get(), { createPopup(externalProjects, projectIcon, it::selectedItem.setter) }) {
 
     override fun popupPoint() = super.popupPoint().apply { x += insets.left }.apply { x -= JBUI.scale(BORDER) }
-        .apply { x -= iconProvider.projectIcon.iconWidth }.apply { x -= JBUI.scale(ICON_TEXT_GAP) }
+        .apply { x -= projectIcon.iconWidth }.apply { x -= JBUI.scale(ICON_TEXT_GAP) }
 
     override fun itemToString(item: DependencyAnalyzerProject?): String = when (item) {
         null -> ExternalSystemBundle.message("external.system.dependency.analyzer.projects.empty")
@@ -118,10 +125,10 @@ private class ExternalProjectDropDownLink(
 
         fun createPopup(
             externalProjects: List<DependencyAnalyzerProject>,
-            iconProvider: ExternalSystemIconProvider,
+            projectIcon: Icon,
             onChange: (DependencyAnalyzerProject) -> Unit
         ): JBPopup {
-            val content = ExternalProjectPopupContent(externalProjects, iconProvider)
+            val content = ExternalProjectPopupContent(externalProjects, projectIcon)
             content.afterChange(onChange)
             return JBPopupFactory.getInstance().createComponentPopupBuilder(content.component, null).setResizable(true)
                 .setRequestFocus(true).createPopup().apply { content.list.whenMousePressed(listener = ::closeOk) }

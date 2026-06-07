@@ -1,7 +1,6 @@
 package bitlap.sbt.analyzer
 
 import com.intellij.ide.plugins.{ IdeaPluginDescriptor, PluginManager }
-import com.intellij.openapi.extensions.PluginId
 
 object SbtDependencyAnalyzerPlugin {
 
