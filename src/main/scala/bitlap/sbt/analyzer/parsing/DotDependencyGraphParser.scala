@@ -133,13 +133,10 @@ final class DotDependencyGraphParser extends DependencyGraphParser:
   private def getDependencyRelations(context: AnalyzerContext): Option[Dependencies] = {
     val currentTime = System.currentTimeMillis()
 
-    // 检查缓存
     DotFileCache.getCachedResult(context.analysisFile, currentTime) match {
       case Some(cachedResult) =>
-        // 缓存命中，直接返回
         cachedResult
       case None =>
-        // 缓存未命中，解析文件
         val mutableGraph: MutableGraph = DotUtils.parseAsGraph(context)
         val result                     =
           if (mutableGraph == null) None
