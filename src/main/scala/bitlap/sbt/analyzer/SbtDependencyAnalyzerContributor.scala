@@ -16,7 +16,6 @@ import bitlap.sbt.analyzer.task.*
 import bitlap.sbt.analyzer.util.*
 import bitlap.sbt.analyzer.util.DependencyUtils.*
 
-import org.jetbrains.plugins.scala.project.ModuleExt
 import org.jetbrains.sbt.SbtUtil
 import org.jetbrains.sbt.project.*
 import org.jetbrains.sbt.project.SbtProjectSystem
@@ -25,6 +24,7 @@ import org.jetbrains.sbt.project.module.*
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.dependency.analyzer.{ DependencyAnalyzerDependency as Dependency, * }
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency.Data
 import com.intellij.openapi.externalSystem.model.*
@@ -35,13 +35,14 @@ import com.intellij.openapi.externalSystem.service.notification.ExternalSystemPr
 import com.intellij.openapi.externalSystem.service.project.ProjectDataManager
 import com.intellij.openapi.externalSystem.util.*
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VfsUtil
 
 import kotlin.jvm.functions
 
 final class SbtDependencyAnalyzerContributor(project: Project) extends DependencyAnalyzerContributor {
 
   import SbtDependencyAnalyzerContributor.*
+
+  private val logger = Logger.getInstance(this.getClass)
 
   @volatile
   private var organization: String = scala.compiletime.uninitialized
@@ -96,6 +97,8 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
               moduleDataNodeOpt.foreach { moduleDataNode =>
                 projects.put(externalProject, new ModuleNode(moduleDataNode.getData))
               }
+            } else {
+              logger.warn("Can not find root moduleData")
             }
           }
           val moduleDataList =
@@ -128,20 +131,30 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     val progressManager = ExternalSystemProgressNotificationManager.getInstance()
     progressManager.addNotificationListener(
       new ExternalSystemTaskNotificationListener() {
-        override def onEnd(projectPath: String, id: ExternalSystemTaskId): Unit = {
-          if (id.getType == ExternalSystemTaskType.RESOLVE_PROJECT && id.getProjectSystemId == SbtProjectSystem.Id) {
-            // if dependencies have changed, we must delete all analysis files (.dot)
-            // however, this can only be used to monitor whether the view is open
-            projects
-              .values()
-              .asScala
-              .map(d => d.getLinkedExternalProjectPath)
-              .foreach(deleteExistAnalysisFiles)
+        private val isProcessing = new AtomicBoolean(false)
 
-            projects.clear()
-            configurationNodesMap.clear()
-            dependencyMap.clear()
-            listener.invoke()
+        override def onEnd(projectPath: String, id: ExternalSystemTaskId): Unit = {
+          if (isProcessing.compareAndSet(false, true)) {
+            try {
+              if (
+                id.getType == ExternalSystemTaskType.RESOLVE_PROJECT && id.getProjectSystemId == SbtProjectSystem.Id
+              ) {
+                // if dependencies have changed, we must delete all analysis files (.dot)
+                // however, this can only be used to monitor whether the view is open
+                projects
+                  .values()
+                  .asScala
+                  .map(d => d.getLinkedExternalProjectPath)
+                  .foreach(deleteExistAnalysisFiles)
+
+                projects.clear()
+                configurationNodesMap.clear()
+                dependencyMap.clear()
+                listener.invoke()
+              }
+            } finally {
+              isProcessing.set(false)
+            }
           }
         }
       },

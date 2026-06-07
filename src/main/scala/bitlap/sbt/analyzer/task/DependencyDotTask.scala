@@ -7,8 +7,6 @@ import bitlap.sbt.analyzer.model.*
 import bitlap.sbt.analyzer.parsing.*
 import bitlap.sbt.analyzer.util.DependencyUtils.*
 
-import org.jetbrains.plugins.scala.project.ModuleExt
-
 import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.model.project.dependencies.DependencyScopeNode
 import com.intellij.openapi.project.Project
