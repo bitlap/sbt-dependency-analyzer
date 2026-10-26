@@ -127,6 +127,7 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
           paint(view.createComponent(), output.resolve("analyzer.png"), 1200, 650)
         } finally com.intellij.openapi.util.Disposer.dispose(disposable)
       }
+      AnalyzerSmokeStarterSourceActions.run(project, (name, body) => check(name)(body()))
       val first  = "\"g\" % \"a\" % \"1\" % Test"
       val second = "\"g\" % \"a\" % \"1\""
       val source = s"libraryDependencies ++= Seq(\n  $first,\n  $second\n)"
@@ -338,7 +339,8 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
           entry.scope,
           manager.createSmartPsiElementPointer(entry.site),
           entry.editable,
-          entry.cross
+          entry.cross,
+          entry.collection.map { (reference, index) => manager.createSmartPsiElementPointer(reference) -> index }
         )
       }
       Seq("%", "%%", "%%%").foreach { cross =>
@@ -388,14 +390,53 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
           plan.after.contains("val dep =") && !plan.after.contains("dep % Test") && plan.after.contains("Seq( dep)")
         )
       }
-      check("PSI shared dependency sequences remain navigable and cannot be accidentally edited") {
+      check("PSI shared dependency sequences edit their use site without changing the shared definition") {
         val found = entries("""val shared = Seq("g" % "a" % "1")
           |libraryDependencies ++= shared""".stripMargin)
-        assert(found.size == 1 && !found.head.editable)
-        try {
-          DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("g", "a", "1"), false)
-          throw new AssertionError("shared sequence was edited")
-        } catch { case _: IllegalArgumentException => () }
+        assert(found.size == 1 && found.head.editable && found.head.collection.nonEmpty)
+        val remove =
+          DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("g", "a", "1"), true)
+        assert(remove.after.contains("val shared = Seq(\"g\" % \"a\" % \"1\")"))
+        assert(remove.after.contains("(shared).patch(0, _root_.scala.collection.immutable.Nil, 1)"))
+        val exclude =
+          DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("t", "child", "2"), false)
+        assert(exclude.after.contains("(shared).updated(0, (shared)(0).exclude(\"t\", \"child\"))"))
+        assert(!PsiTreeUtil.hasErrorElements(fixture(remove.after)))
+        assert(!PsiTreeUtil.hasErrorElements(fixture(exclude.after)))
+      }
+      check("PSI nested ordered collections keep exact positions and reject unknown or unordered collection edits") {
+        val found = entries("""val first = Seq("g" % "a" % "1")
+          |val second = List("g" % "b" % "1")
+          |val all = first ++ second
+          |libraryDependencies ++= all""".stripMargin)
+        assert(found.map(_.collection.map(_._2)) == Seq(Some(0), Some(1)))
+        val removal =
+          DependencyEditPlan.prepare(project, pointer(found(1)), new UnifiedCoordinates("g", "b", "1"), true)
+        assert(removal.after.contains("(all).patch(1, _root_.scala.collection.immutable.Nil, 1)"))
+        for (
+          source <- Seq(
+            """val all = Seq(computed(), "g" % "a" % "1"); libraryDependencies ++= all""",
+            """val all = Set("g" % "a" % "1"); libraryDependencies ++= all"""
+          )
+        ) {
+          val result = entries(source)
+          assert(result.nonEmpty && result.forall(e => !e.editable && e.collection.isEmpty))
+        }
+      }
+      check("PSI shared collection preview rejects intervening changes in other build definitions") {
+        val found    = entries("""val shared = Seq("g" % "a" % "1"); libraryDependencies ++= shared""").head
+        val plan     = DependencyEditPlan.prepare(project, pointer(found), new UnifiedCoordinates("g", "a", "1"), true)
+        val other    = fixture("val unrelated = 1")
+        val manager  = PsiDocumentManager.getInstance(project)
+        val document = manager.getDocument(other)
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(
+          project,
+          new Runnable {
+            override def run(): Unit = { document.setText("val unrelated = 2"); manager.commitDocument(document) }
+          }
+        )
+        try { plan.apply(); throw new AssertionError("Stale shared collection index accepted") }
+        catch { case _: IllegalArgumentException => () }
       }
       check("PSI cyclic references terminate and computed expressions are not guessed") {
         assert(entries("""val a = b

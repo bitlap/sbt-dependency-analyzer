@@ -15,16 +15,19 @@ import com.intellij.psi.{ PsiElement, SmartPointerManager, SmartPsiElementPointe
  *  @param container
  *    enclosing expression including scope and chained modifiers
  *  @param editable
- *    false when automatic edits could affect a shared definition
+ *    false when the use site cannot be rewritten safely
  *  @param cross
  *    original coordinate operator (%, %% or %%%), used for artifact matching
+ *  @param collection
+ *    ordered shared collection reference and the selected element position, for use-site edits
  */
 final case class DependencyDeclaration(
   expression: SmartPsiElementPointer[ScInfixExpr],
   scope: String,
   container: SmartPsiElementPointer[ScExpression],
   editable: Boolean = true,
-  cross: String = "%"
+  cross: String = "%",
+  collection: Option[(SmartPsiElementPointer[ScExpression], Int)] = None
 ) {
 
   /** Resolves both smart pointers and returns the core expression, effective scope and enclosing expression. Returns
@@ -35,15 +38,28 @@ final case class DependencyDeclaration(
     outer <- Option(container.getElement).filter(_.isValid)
   } yield (core, scope, outer)
 
-  def choiceLabel: String =
-    s"$location [$scope] " + resolve.map(_._3.getText.replaceAll("\\s+", " ").take(120)).getOrElse("")
+  /** Shared ordered collections are edited at the selected module's reference, while navigation still uses the original
+   *  coordinate definition. Invalid reference pointers disable editing rather than choosing another site.
+   */
+  def editExpression: Option[ScExpression] = collection match {
+    case Some((reference, _)) => Option(reference.getElement).filter(_.isValid)
+    case None                 => Option(container.getElement).filter(_.isValid)
+  }
 
-  def location: String = resolve.map { (_, _, outer) =>
+  def choiceLabel: String = {
+    val locations = if (collection.nonEmpty && editLocation != location) s"$location → $editLocation" else location
+    s"$locations [$scope] " + resolve.map(_._3.getText.replaceAll("\\s+", " ").take(120)).getOrElse("")
+  }
+
+  def location: String     = resolve.map(e => locationOf(e._3)).getOrElse("<invalid>")
+  def editLocation: String = editExpression.map(locationOf).getOrElse("<invalid>")
+
+  private def locationOf(expression: ScExpression): String = {
     val document =
-      com.intellij.psi.PsiDocumentManager.getInstance(outer.getProject).getDocument(outer.getContainingFile)
-    val line = if (document == null) 1 else document.getLineNumber(outer.getTextOffset) + 1
-    s"${outer.getContainingFile.getVirtualFile.getPath}:$line"
-  }.getOrElse("<invalid>")
+      com.intellij.psi.PsiDocumentManager.getInstance(expression.getProject).getDocument(expression.getContainingFile)
+    val line = if (document == null) 1 else document.getLineNumber(expression.getTextOffset) + 1
+    s"${expression.getContainingFile.getVirtualFile.getPath}:$line"
+  }
 }
 
 object DependencyDeclaration {

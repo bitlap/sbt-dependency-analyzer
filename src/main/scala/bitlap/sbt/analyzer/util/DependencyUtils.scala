@@ -108,22 +108,6 @@ object DependencyUtils {
     }
     parentNode.getDependencies.addAll(mds.asJava)
 
-    mds.filter(_.isInstanceOf[ArtifactDependencyNodeImpl]).foreach { node =>
-      val artifact   = getArtifactInfoFromDisplayName(node.getDisplayName)
-      val artifactId = artifact.map(_.artifact).getOrElse(Constants.EMPTY_STRING)
-      val group      = artifact.map(_.group).getOrElse(Constants.EMPTY_STRING)
-      // Use artifact to determine whether there are modules in the dependency.
-      if (
-        context.moduleIdArtifactIdsCache.values
-          .exists(d => group == context.organization && getArtifactWithoutScalaVersion(artifactId) == d)
-      ) {
-        appendChildrenAndFixProjectNodes(
-          node,
-          node.getDependencies.asScala.toList,
-          context
-        )
-      }
-    }
   }
 
   private def isSubModule(maybeModule: String, context: AnalyzerContext): Boolean = {
@@ -160,16 +144,14 @@ object DependencyUtils {
       .flatMap(context.moduleNamePathsCache.get)
       .getOrElse(Constants.EMPTY_STRING)
 
+    // Source-to-module ambiguity is not an sbt resolution failure. Retain the resolved artifact and its children.
+    if (projectPath.isEmpty) return Some(dn)
     val p = new ProjectDependencyNodeImpl(
       dn.getId,
       sbtModuleName,
       projectPath
     )
-    if (p.getProjectPath.isEmpty) {
-      p.setResolutionState(ResolutionState.UNRESOLVED)
-    } else {
-      p.setResolutionState(ResolutionState.RESOLVED)
-    }
+    p.setResolutionState(dn.getResolutionState)
     p.getDependencies.addAll(
       dn.getDependencies.asScala
         .filterNot(d => isSelfNode(d, context.copy(currentModuleId = sbtModuleName)))

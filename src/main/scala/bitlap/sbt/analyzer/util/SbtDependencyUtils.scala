@@ -886,7 +886,8 @@ object SbtDependencyUtils {
             entry.scope,
             manager.createSmartPsiElementPointer(entry.site),
             entry.editable,
-            entry.cross
+            entry.cross,
+            entry.collection.map { (reference, index) => manager.createSmartPsiElementPointer(reference) -> index }
           )
           val dataContext: DataContext = (dataId: String) => {
             if (bitlap.sbt.analyzer.parsing.DependencyDeclaration.Key.is(dataId)) declaration

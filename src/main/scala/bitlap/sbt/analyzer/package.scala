@@ -71,9 +71,22 @@ def findDependsModules(module: Module): List[Module] = {
   modelsProvider.getAllDependentModules(module).asScala.toList
 }
 
+/** Uses the imported external ID and path before the platform name generator, so renamed and qualified IDE display
+ *  names do not determine module identity. Ambiguous imported identities never select an arbitrary module.
+ */
 def findModule(project: Project, moduleData: ModuleData): Module = {
-  val modelsProvider = new IdeModelsProviderImpl(project)
-  modelsProvider.findIdeModule(moduleData)
+  val imported = com.intellij.openapi.module.ModuleManager.getInstance(project).getModules.toList.filter { module =>
+    val properties = com.intellij.openapi.externalSystem.ExternalSystemModulePropertyManager.getInstance(module)
+    !module.isDisposed && properties.getExternalSystemId == moduleData.getOwner.getId &&
+      properties.getLinkedProjectId == moduleData.getId &&
+      com.intellij.openapi.util.io.FileUtil
+        .pathsEqual(properties.getLinkedProjectPath, moduleData.getLinkedExternalProjectPath)
+  }
+  imported match {
+    case List(module) => module
+    case Nil          => new IdeModelsProviderImpl(project).findIdeModule(moduleData)
+    case _            => null
+  }
 }
 
 def findModule(project: Project, projectData: ProjectData): Module =

@@ -35,7 +35,7 @@ Select a dependency in the list or tree and open its context menu:
 
 | Action | Purpose |
 | --- | --- |
-| Go to Dependency | Navigate to the source declaration; choose a target when several declarations match. |
+| Go to Dependency | Navigate to the source declaration, or the introducing direct declaration for a transitive dependency; choose when several match. |
 | Remove Direct Dependency | Preview removal of the selected direct dependency's use site. |
 | Exclude from … | Preview exclusion of a transitive dependency from the selected direct declaration. |
 | Refresh Dependencies | Invalidate graph caches and analyze again. |
@@ -43,7 +43,7 @@ Select a dependency in the list or tree and open its context menu:
 
 Removal and exclusion are experimental. Review the before/after preview before applying, or cancel; applying creates one undoable command. Reload sbt after an edit, then refresh the analysis.
 
-Navigation resolves constants, dependency aliases and common dependency expressions. Shared `ModuleID` aliases are edited at their use sites where possible. Shared dependency lists remain navigable, and computed declarations that cannot be located safely are not modified automatically. Exact versions take precedence; evicted or dynamic versions fall back to coordinate and scope candidates.
+Navigation resolves constants, dependency aliases and common dependency expressions. Shared `ModuleID` aliases are edited at their use sites where possible. Statically resolved shared ordered lists are edited at the current module’s reference; computed declarations that cannot be located safely require manual edits. Exact versions take precedence; evicted or dynamic versions fall back to coordinate and scope candidates.
 
 Analysis runs in the background, and failure notifications offer a retry action. Cancellation stops waiting; a submitted sbt command may continue running. Module and scope selectors support Enter; scope checkboxes also support Space.
 
@@ -67,7 +67,7 @@ Save the build file and reload sbt, then select **Refresh Dependencies**. Refres
 
 ### No source declaration is found, or editing is disabled
 
-Wait for indexing and check the selected module and scope. The plugin does not infer arbitrary dependency factories from their string arguments or automatically rewrite shared dependency lists; edit those declarations in the build file.
+Wait for indexing and check the selected module and scope. Common modifiers, inherited configurations and shared ordered dependency lists are supported. Shared-list edits apply at the current module’s reference. Dynamic factories and unordered collections that cannot be located statically require a manual build-file edit.
 
 ### Module dependencies are not recognized
 

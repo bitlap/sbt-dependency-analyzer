@@ -62,4 +62,17 @@ class DeclarationMatcherSpec extends AnyFunSuite {
     assert(DeclarationMatcher.select(List("other"))(_ => false, _ => false).isEmpty)
   }
 
+  test("built in inherited scopes require explicit fallback and never reverse inheritance") {
+    def inherited(declared: String, target: String) =
+      DeclarationMatcher.matches("g", "a", "1", declared, "g", "a", "1", target, "%", true)
+    assert(!matches("a", "a", "%", "compile", "test"))
+    assert(inherited("compile", "test"))
+    assert(inherited("compile", "runtime"))
+    assert(inherited("runtime", "test"))
+    assert(!inherited("test", "compile"))
+    assert(!inherited("runtime", "compile"))
+    assert(!inherited("test", "it"))
+    assert(!inherited("compile", "custom"))
+  }
+
 }

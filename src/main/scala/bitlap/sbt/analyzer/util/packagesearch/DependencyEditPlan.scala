@@ -21,13 +21,22 @@ final case class DependencyEditPlan(
   project: Project,
   declaration: DependencyDeclaration,
   before: String,
-  after: String
+  after: String,
+  psiModification: Option[Long] = None
 ) {
 
   /** Applies the reviewed snapshot in one undoable write command after checking that the document is unchanged. */
   def apply(): Unit = {
-    val (_, _, expression) =
-      declaration.resolve.getOrElse(throw new IllegalStateException("Declaration changed; analyze again"))
+    declaration.resolve.getOrElse(throw new IllegalStateException("Declaration changed; analyze again"))
+    val expression =
+      declaration.editExpression.getOrElse(throw new IllegalStateException("Dependency use changed; analyze again"))
+    def checkCollection(): Unit = require(
+      psiModification.forall(
+        _ == com.intellij.psi.util.PsiModificationTracker.getInstance(project).getModificationCount
+      ),
+      "Build definitions changed while preview was open; retry the operation"
+    )
+    checkCollection()
     val manager  = PsiDocumentManager.getInstance(project)
     val document = manager.getDocument(expression.getContainingFile)
     require(
@@ -39,6 +48,7 @@ final case class DependencyEditPlan(
       new Runnable {
         override def run(): Unit = {
           require(document.getText == before, "Build file changed; retry the operation")
+          checkCollection()
           document.setText(after)
           manager.commitDocument(document)
         }
@@ -51,8 +61,8 @@ object DependencyEditPlan {
   private def quoted(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
   /** Builds an edit without modifying PSI or the document. Removal supports a += assignment or an argument-list element
-   *  and removes the adjacent comma when needed. Exclusion wraps the enclosing dependency expression. Shared, invalid
-   *  or read-only targets are rejected.
+   *  and removes the adjacent comma when needed. Ordered shared collections use patch/updated at the module reference.
+   *  Exclusion wraps the enclosing dependency expression. Unknown, invalid or read-only targets are rejected.
    *
    *  @param remove
    *    true to remove the declaration; false to exclude selected from that declaration
@@ -64,13 +74,22 @@ object DependencyEditPlan {
     remove: Boolean
   ): DependencyEditPlan = {
     require(declaration.editable, "This declaration is shared; edit its definition directly")
-    val (_, _, expression) =
-      declaration.resolve.getOrElse(throw new IllegalStateException("Declaration is no longer valid"))
+    declaration.resolve.getOrElse(throw new IllegalStateException("Declaration is no longer valid"))
+    val expression =
+      declaration.editExpression.getOrElse(throw new IllegalStateException("Dependency use is no longer valid"))
     val document = PsiDocumentManager.getInstance(project).getDocument(expression.getContainingFile)
     require(document != null && expression.isWritable, "Build file is read-only")
     val before = document.getText
     val ranges = scala.collection.mutable.ListBuffer.empty[(Int, Int, String)]
-    if (remove) {
+    if (declaration.collection.nonEmpty) {
+      val index       = declaration.collection.get._2
+      val reference   = s"(${expression.getText})"
+      val replacement =
+        if (remove) s"$reference.patch($index, _root_.scala.collection.immutable.Nil, 1)"
+        else
+          s"$reference.updated($index, $reference($index).exclude(${quoted(selected.getGroupId)}, ${quoted(selected.getArtifactId)}))"
+      ranges += ((expression.getTextRange.getStartOffset, expression.getTextRange.getEndOffset, replacement))
+    } else if (remove) {
       val target = expression.getParent match {
         case assignment: ScInfixExpr
             if bitlap.sbt.analyzer.parsing.SbtDeclarationResolver.dependencyKey(assignment.left) &&
@@ -106,7 +125,15 @@ object DependencyEditPlan {
     val after = ranges.sortBy(-_._1).foldLeft(before) { case (text, (start, end, replacement)) =>
       text.take(start) + replacement + text.drop(end)
     }
-    DependencyEditPlan(project, declaration, before, after)
+    DependencyEditPlan(
+      project,
+      declaration,
+      before,
+      after,
+      declaration.collection.map(_ =>
+        com.intellij.psi.util.PsiModificationTracker.getInstance(project).getModificationCount
+      )
+    )
   }
 
   /** Creates read-only before/after views of the entire file for the prepared edit. */
@@ -128,7 +155,7 @@ object DependencyEditPlan {
     )
     split.setResizeWeight(0.5)
     val panel = new JPanel(new java.awt.BorderLayout())
-    panel.add(new JLabel(plan.declaration.location), java.awt.BorderLayout.NORTH)
+    panel.add(new JLabel(plan.declaration.editLocation), java.awt.BorderLayout.NORTH)
     panel.add(split, java.awt.BorderLayout.CENTER)
     panel
   }

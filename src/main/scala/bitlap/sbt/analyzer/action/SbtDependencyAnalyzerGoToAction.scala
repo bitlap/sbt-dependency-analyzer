@@ -8,6 +8,7 @@ import org.jetbrains.sbt.project.SbtProjectSystem
 import com.intellij.ide.util.PsiNavigationSupport
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.externalSystem.dependency.analyzer.*
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbService
 import com.intellij.pom.Navigatable
 
@@ -24,8 +25,19 @@ class SbtDependencyAnalyzerGoToAction extends DependencyAnalyzerGoToAction(SbtPr
       .filter(_.resolve.nonEmpty)
       .distinctBy(_.expression.getElement)
 
+  private def navigatable(declaration: DependencyDeclaration): Option[Navigatable] = declaration.resolve.flatMap {
+    (core, _, _) =>
+      val source = core.getNavigationElement
+      Option(PsiNavigationSupport.getInstance().getDescriptor(source)).orElse {
+        Option(source.getContainingFile)
+          .flatMap(file => Option(file.getOriginalFile.getVirtualFile))
+          .filter(_.isValid)
+          .map(file => new OpenFileDescriptor(source.getProject, file, source.getTextOffset))
+      }
+  }
+
   override def getNavigatable(e: AnActionEvent): Navigatable = candidates(e) match {
-    case List(one) => PsiNavigationSupport.getInstance().getDescriptor(one.expression.getElement)
+    case List(one) => navigatable(one).getOrElse(null)
     case _         => null
   }
 
@@ -48,9 +60,8 @@ class SbtDependencyAnalyzerGoToAction extends DependencyAnalyzerGoToAction(SbtPr
     val declarations = candidates(e)
     DeclarationChooser
       .choose(e.getProject, e.getPresentation.getText, declarations)
-      .flatMap(_.resolve)
-      .foreach { (core, _, _) =>
-        PsiNavigationSupport.getInstance().getDescriptor(core).navigate(true)
-      }
+      .flatMap(navigatable)
+      .filter(_.canNavigate())
+      .foreach(_.navigate(true))
   }
 }

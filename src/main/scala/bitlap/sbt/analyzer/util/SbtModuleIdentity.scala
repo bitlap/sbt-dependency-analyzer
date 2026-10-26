@@ -5,6 +5,18 @@ package bitlap.sbt.analyzer.util
  */
 object SbtModuleIdentity {
 
+  /** Aggregator modules have no platform libraries and appear as JVM. Preserve explicit JS/Native evidence from their
+   *  source sets regardless of module enumeration order; conflicting explicit evidence remains ambiguous.
+   */
+  def platformsByProject(evidence: Seq[(String, String)]): Map[String, String] =
+    evidence.groupMap(_._1)(_._2).flatMap { (id, values) =>
+      values.filterNot(_ == "jvm").distinct match {
+        case Seq(platform) => Some(id -> platform)
+        case Seq()         => Some(id -> "jvm")
+        case _             => Some(id -> "ambiguous")
+      }
+    }
+
   def projectIdForArtifact(
     artifact: String,
     moduleNames: Map[String, String],

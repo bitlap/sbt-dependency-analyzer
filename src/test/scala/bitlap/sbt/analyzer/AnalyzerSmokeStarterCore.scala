@@ -347,14 +347,14 @@ object AnalyzerSmokeStarterCore {
     )
 
     check(
-      "shared and read only declarations cannot produce a writable edit plan",
+      "unsupported and read only declarations cannot produce a writable edit plan",
       () => {
         val expression = """"g" % "a" % "1""""
         val d          = declaration(s"libraryDependencies += $expression", expression)
         val coordinate = new com.intellij.buildsystem.model.unified.UnifiedCoordinates("g", "a", "1")
         try {
           DependencyEditPlan.prepare(project, d.copy(editable = false), coordinate, true);
-          throw new AssertionError("Shared declaration accepted")
+          throw new AssertionError("Unsupported declaration accepted")
         } catch { case _: IllegalArgumentException => () }
         val file = d.expression.getElement.getContainingFile.getVirtualFile
         try {

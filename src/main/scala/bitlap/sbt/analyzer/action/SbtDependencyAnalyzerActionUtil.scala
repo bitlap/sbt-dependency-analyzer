@@ -9,9 +9,9 @@ import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.externalSystem.dependency.analyzer.*
 import com.intellij.openapi.module.Module as OpenapiModule
 
-/** Source context for a selected analyzer node. Navigation candidates describe the selected artifact; edit candidates
- *  describe its direct dependency ancestor. A single unambiguous declaration is also exposed separately for callers
- *  that require it.
+/** Source context for a selected analyzer node. Navigation candidates describe the selected artifact or its introducing
+ *  direct declaration; edit candidates describe its direct dependency ancestor. A single unambiguous declaration is
+ *  also exposed separately for callers that require it.
  */
 final case class ModifiableDependency(
   module: OpenapiModule,
@@ -49,7 +49,12 @@ object SbtDependencyAnalyzerActionUtil {
 
     if (module == null || module.isDisposed || com.intellij.openapi.project.DumbService.isDumb(project)) return null
     val declarations = DependencyUtils.getDeclaredDependency(module)
-    def matches(dc: DeclaredDependency, target: UnifiedCoordinates, versionRequired: Boolean = true): Boolean = {
+    def matches(
+      dc: DeclaredDependency,
+      target: UnifiedCoordinates,
+      versionRequired: Boolean = true,
+      inherited: Boolean = false
+    ): Boolean = {
       val c = dc.getCoordinates
       target != null && DeclarationMatcher.matches(
         c.getGroupId,
@@ -60,20 +65,25 @@ object SbtDependencyAnalyzerActionUtil {
         target.getArtifactId,
         target.getVersion,
         dependency.getScope.getName,
-        Option(dc.getDataContext.getData(bitlap.sbt.analyzer.parsing.DependencyDeclaration.Key)).fold("%")(_.cross)
+        Option(dc.getDataContext.getData(bitlap.sbt.analyzer.parsing.DependencyDeclaration.Key)).fold("%")(_.cross),
+        inherited
       )
     }
+    def matching(target: UnifiedCoordinates): List[DeclaredDependency] = {
+      val exactScope = DeclarationMatcher.select(declarations)(matches(_, target), matches(_, target, false))
+      if (exactScope.nonEmpty) exactScope
+      else DeclarationMatcher.select(declarations)(matches(_, target, true, true), matches(_, target, false, true))
+    }
     val directCoordinates             = getUnifiedCoordinates(parentDependency)
-    val candidateDeclaredDependencies =
-      DeclarationMatcher.select(declarations)(matches(_, directCoordinates), matches(_, directCoordinates, false))
-    val selected = DeclarationMatcher.select(declarations)(matches(_, coordinates), matches(_, coordinates, false))
+    val candidateDeclaredDependencies = matching(directCoordinates)
+    val selected                      = matching(coordinates)
     ModifiableDependency(
       module,
       coordinates,
       selected match { case List(one) => Some(one); case _ => None },
       candidateDeclaredDependencies,
       parentDependency,
-      selected
+      if (selected.nonEmpty) selected else candidateDeclaredDependencies
     )
 
   end getModifiableDependency

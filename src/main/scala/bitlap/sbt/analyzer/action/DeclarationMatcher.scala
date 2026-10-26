@@ -26,7 +26,8 @@ object DeclarationMatcher {
     targetArtifact: String,
     targetVersion: String,
     targetScope: String,
-    cross: String = "%"
+    cross: String = "%",
+    includeInheritedScopes: Boolean = false
   ): Boolean = {
     def normalized(value: String): String  = Option(value).getOrElse("").trim.toLowerCase
     def scopes(value: String): Set[String] = normalized(value) match {
@@ -38,7 +39,13 @@ object DeclarationMatcher {
       case "%%"  => value.replaceFirst("_(?:2\\.\\d+(?:\\.\\d+)?|3(?:\\.\\d+)*)$", "")
       case _     => value
     }
+    val targetScopes = scopes(targetScope).flatMap {
+      case "test" | "it" | "integrationtest" if includeInheritedScopes =>
+        scopes(targetScope) ++ Set("runtime", "compile")
+      case "runtime" if includeInheritedScopes => Set("runtime", "compile")
+      case scope                               => Set(scope)
+    }
     group == targetGroup && artifact == artifactKey(targetArtifact) &&
-      version == targetVersion && scopes(scope).intersect(scopes(targetScope)).nonEmpty
+      version == targetVersion && scopes(scope).intersect(targetScopes).nonEmpty
   }
 }

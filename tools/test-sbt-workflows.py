@@ -57,6 +57,12 @@ lazy val root = project.in(file(".")).aggregate(api, RootProject(file("external 
     assert((ProjectRef(uri("__EXTERNAL_URI__"), "core-api") / moduleName).value == "external-duplicate")
     assert((LocalProject("core-api") / update / skip).value, "Main user session setting was removed")
     assert((ProjectRef(uri("__EXTERNAL_URI__"), "project1Root") / update / skip).value, "External user session setting was removed")
+    val shared = Seq("fixture" %% "a" % "1", "fixture" %% "b" % "1")
+    val excluded = (shared).updated(0, (shared)(0).exclude("t", "child"))
+    val removed = (excluded).patch(0, _root_.scala.collection.immutable.Nil, 1)
+    assert(shared.map(_.name) == Seq("a", "b") && shared.forall(_.exclusions.isEmpty))
+    assert(excluded.head.exclusions.exists(rule => rule.organization == "t" && rule.name == "child"))
+    assert(excluded.tail == shared.tail && removed == shared.tail)
     println("ANALYZER_SBT_WORKFLOW_PASS")
   }
 )

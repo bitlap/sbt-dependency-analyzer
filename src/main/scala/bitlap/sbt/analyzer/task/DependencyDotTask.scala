@@ -45,20 +45,21 @@ final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
             sbtModuleNameMap,
             cacheTimeoutMillis = SettingsState.getSettings(project).fileCacheTimeout.toLong * 1000,
             dotCache = AnalyzerCacheService.getInstance(project).dotFiles,
-            modulePlatforms = com.intellij.openapi.module.ModuleManager
-              .getInstance(project)
-              .getModules
-              .toSeq
-              .filterNot(canIgnoreModule)
-              .flatMap(m =>
-                org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(m).map { ref =>
-                  bitlap.sbt.analyzer.util.SbtProjectReference(ref.uri, ref.id).selector -> (if (m.isScalaJs) "js"
-                                                                                             else if (m.isScalaNative)
-                                                                                               "native"
-                                                                                             else "jvm")
-                }
-              )
-              .toMap
+            modulePlatforms = bitlap.sbt.analyzer.util.SbtModuleIdentity.platformsByProject(
+              com.intellij.openapi.module.ModuleManager
+                .getInstance(project)
+                .getModules
+                .toSeq
+                .filterNot(canIgnoreModule)
+                .flatMap(m =>
+                  org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(m).map { ref =>
+                    bitlap.sbt.analyzer.util.SbtProjectReference(ref.uri, ref.id).selector -> (if (m.isScalaJs) "js"
+                                                                                               else if (m.isScalaNative)
+                                                                                                 "native"
+                                                                                               else "jvm")
+                  }
+                )
+            )
           ),
           createRootScopeNode(scope, project)
         )

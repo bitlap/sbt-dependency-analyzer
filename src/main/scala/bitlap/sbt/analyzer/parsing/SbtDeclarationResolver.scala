@@ -24,7 +24,8 @@ object SbtDeclarationResolver {
     version: String,
     scope: String,
     cross: String,
-    editable: Boolean
+    editable: Boolean,
+    collection: Option[(ScExpression, Int)] = None
   )
 
   private val modifiers = Set(
@@ -46,9 +47,11 @@ object SbtDeclarationResolver {
   /** Resolves a reference to the initializer of a single-binding pattern definition; other targets yield None. */
   def definition(ref: ScReferenceExpression): Option[ScExpression] =
     Option(ref.resolve()).flatMap { resolved =>
-      Option(PsiTreeUtil.getParentOfType(resolved, classOf[ScPatternDefinition], false))
+      val source = resolved.getNavigationElement
+      Option(PsiTreeUtil.getParentOfType(source, classOf[ScPatternDefinition], false))
         .filter(_.bindings.size == 1)
-        .flatMap(_.expr)
+        // expr may deserialize a detached dummy.scala expression from a stub. Traverse the real AST for source pointers.
+        .flatMap(pattern => Option(PsiTreeUtil.getChildOfType(pattern, classOf[ScExpression])))
     }
 
   /** Resolves simple string literals, references, parentheses and supported string concatenation. Cycles or reference
@@ -96,21 +99,13 @@ object SbtDeclarationResolver {
       case call: ScMethodCall =>
         call.getEffectiveInvokedExpr match {
           case r: ScReferenceExpression if modifiers(r.refName) =>
-            r.qualifier.flatMap(coordinate(_, next)).map { entry =>
-              if (r.refName == "cross") {
-                val mode = call.argumentExpressions.headOption.collect { case ref: ScReferenceExpression =>
-                  ref.refName
-                }
-                mode match {
-                  case Some("disabled")                                        => entry.copy(cross = "%")
-                  case Some("binary" | "full" | "for3Use2_13" | "for2_13Use3") => entry.copy(cross = "%%")
-                  case _                                                       => entry
-                }
-              } else entry
-            }
+            r.qualifier.flatMap(coordinate(_, next)).map(modified(_, r.refName, call.argumentExpressions.headOption))
           case _ => None
         }
-      case i: ScInfixExpr if i.operation.refName == "%" =>
+      case i: ScInfixExpr if modifiers(i.operation.refName) =>
+        coordinate(i.left, next).map(modified(_, i.operation.refName, Some(i.right)))
+      case p: ScPostfixExpr if modifiers(p.operation.refName) => coordinate(p.operand, next)
+      case i: ScInfixExpr if i.operation.refName == "%"       =>
         coordinate(i.left, next)
           .flatMap(c => configuration(i.right).map(s => c.copy(scope = s)))
           .orElse(i.left match {
@@ -131,14 +126,92 @@ object SbtDeclarationResolver {
     }
   }
 
-  private def invoked(expr: ScExpression): ScExpression = expr match {
-    case g: ScGenericCall => invoked(g.referencedExpr)
-    case other            => other
+  private def modified(entry: Entry, method: String, argument: Option[ScExpression]): Entry = {
+    if (method != "cross") entry
+    else
+      argument.collect { case ref: ScReferenceExpression => ref.refName } match {
+        case Some("disabled")                                        => entry.copy(cross = "%")
+        case Some("binary" | "full" | "for3Use2_13" | "for2_13Use3") => entry.copy(cross = "%%")
+        case _                                                       => entry
+      }
   }
 
-  /** Collects supported coordinate declarations, retaining use-site scope and editability. Collection aliases are
-   *  followed for navigation but marked non-editable; projectId limits explicit project-key owners. Requires read
-   *  access and checks IDE cancellation during traversal.
+  private def invoked(expr: ScExpression): ScExpression = expr match {
+    case g: ScGenericCall       => invoked(g.referencedExpr)
+    case p: ScParenthesisedExpr => p.innerElement.map(invoked).getOrElse(p)
+    case other                  => other
+  }
+
+  private def position(expr: ScExpression): Option[Int] = expr.getText.trim.toIntOption.filter(_ >= 0)
+
+  private def indexed(call: ScMethodCall): Option[(ScExpression, Int)] =
+    if (call.argumentExpressions.size != 1) None
+    else
+      position(call.argumentExpressions.head).map { index =>
+        val receiver = invoked(call.getEffectiveInvokedExpr) match {
+          case r: ScReferenceExpression if r.refName == "apply" => r.qualifier.getOrElse(r)
+          case other                                            => other
+        }
+        receiver -> index
+      }
+
+  private def transform(call: ScMethodCall): Option[(ScExpression, String, Int)] =
+    invoked(call.getEffectiveInvokedExpr) match {
+      case r: ScReferenceExpression if r.refName == "patch" && call.argumentExpressions.size == 3 =>
+        val args = call.argumentExpressions
+        for {
+          receiver <- r.qualifier
+          index    <- position(args.head)
+          if args(1).getText == "_root_.scala.collection.immutable.Nil" && args(2).getText == "1"
+        } yield (receiver, "patch", index)
+      case r: ScReferenceExpression if r.refName == "updated" && call.argumentExpressions.size == 2 =>
+        for { receiver <- r.qualifier; index <- position(call.argumentExpressions.head) } yield (
+          receiver,
+          "updated",
+          index
+        )
+      case _ => None
+    }
+
+  /** Counts only statically ordered collections. Unknown factories, sets and incomplete expressions cannot produce a
+   *  safe positional edit at a shared collection's use site.
+   */
+  private def sequenceSize(expr: ScExpression, seen: Set[PsiElement] = Set.empty): Option[Int] = {
+    if (seen(expr) || seen.size > 128) return None
+    val next = seen + expr
+    if (coordinate(expr, Set.empty).nonEmpty) Some(1)
+    else
+      expr match {
+        case p: ScParenthesisedExpr                        => p.innerElement.flatMap(sequenceSize(_, next))
+        case t: ScTypedExpression                          => sequenceSize(t.expr, next)
+        case r: ScReferenceExpression                      => definition(r).flatMap(sequenceSize(_, next))
+        case i: ScInfixExpr if i.operation.refName == "++" =>
+          for { a <- sequenceSize(i.left, next); b <- sequenceSize(i.right, next) } yield a + b
+        case c: ScMethodCall =>
+          invoked(c.getEffectiveInvokedExpr) match {
+            case r: ScReferenceExpression if Set("Seq", "List", "Vector")(r.refName) =>
+              val sizes = c.argumentExpressions.map(sequenceSize(_, next))
+              if (sizes.forall(_.nonEmpty)) Some(sizes.flatten.sum) else None
+            case r: ScReferenceExpression if modifiers(r.refName) =>
+              r.qualifier.flatMap(sequenceSize(_, next)).filter(_ == 1)
+            case _ =>
+              transform(c).flatMap { (receiver, operation, index) =>
+                sequenceSize(receiver, next).filter(index < _).flatMap { size =>
+                  if (operation == "patch") Some(size - 1)
+                  else sequenceSize(c.argumentExpressions(1), next).filter(_ == 1).map(_ => size)
+                }
+              }.orElse(indexed(c).flatMap { (receiver, index) =>
+                sequenceSize(receiver, next).filter(index < _).map(_ => 1)
+              })
+          }
+        case b: ScBlockExpr => b.exprs.lastOption.flatMap(sequenceSize(_, next))
+        case _              => None
+      }
+  }
+
+  /** Collects supported coordinate declarations, retaining use-site scope and editability. Ordered collection aliases
+   *  retain a safe use-site position; unknown collections remain navigation-only. projectId limits explicit project-key
+   *  owners. Requires read access and checks IDE cancellation during traversal.
    */
   def dependencies(expression: ScExpression, projectId: Option[String] = None): Seq[Entry] = {
     def loop(expr: ScExpression, seen: Set[PsiElement], editable: Boolean): Seq[Entry] = {
@@ -151,7 +224,15 @@ object SbtDeclarationResolver {
           expr match {
             case p: ScParenthesisedExpr   => p.innerElement.toSeq.flatMap(loop(_, next, editable))
             case t: ScTypedExpression     => loop(t.expr, next, editable)
-            case r: ScReferenceExpression => definition(r).toSeq.flatMap(loop(_, next, false))
+            case r: ScReferenceExpression =>
+              definition(r).toSeq.flatMap { target =>
+                val entries = loop(target, next, false)
+                if (sequenceSize(target).contains(entries.size))
+                  entries.zipWithIndex.map { (entry, index) =>
+                    entry.copy(editable = true, collection = Some(r -> index))
+                  }
+                else entries.map(_.copy(editable = false, collection = None))
+              }
             case i: ScInfixExpr if Set("+=", "++=", ":=")(i.operation.refName) && dependencyKey(i.left) =>
               val scopes     = keyExpressions(i.left).flatMap(configuration(_))
               val applicable = projectId.forall(SbtProjectResolver.appliesTo(i.left, _, true))
@@ -167,14 +248,45 @@ object SbtDeclarationResolver {
                       r.refName
                     ) =>
                   call.argumentExpressions.flatMap(loop(_, next, editable)).toSeq
-                case _ => Nil
+                case r: ScReferenceExpression if modifiers(r.refName) =>
+                  val values = r.qualifier.toSeq.flatMap(loop(_, next, editable))
+                  if (values.size != 1) Nil
+                  else
+                    values.map(value =>
+                      modified(value, r.refName, call.argumentExpressions.headOption).copy(site = call)
+                    )
+                case _ =>
+                  transform(call) match {
+                    case Some((receiver, operation, index)) =>
+                      val values   = loop(receiver, next, false)
+                      val complete = sequenceSize(receiver).contains(values.size) && index < values.size
+                      if (!complete) Nil
+                      else {
+                        val changed =
+                          if (operation == "patch") values.patch(index, Nil, 1)
+                          else {
+                            val replacement = loop(call.argumentExpressions(1), next, false)
+                            if (replacement.size == 1) values.updated(index, replacement.head) else Nil
+                          }
+                        changed.zipWithIndex.map { (value, offset) =>
+                          value.copy(editable = true, collection = Some(call -> offset))
+                        }
+                      }
+                    case None =>
+                      indexed(call).toSeq.flatMap { (receiver, index) =>
+                        val values = loop(receiver, next, false)
+                        if (sequenceSize(receiver).contains(values.size))
+                          values.lift(index).map(_.copy(site = call, editable = editable, collection = None))
+                        else None
+                      }
+                  }
               }
             case block: ScBlockExpr => block.exprs.lastOption.toSeq.flatMap(loop(_, next, editable))
             case _                  => Nil
           }
       }
     }
-    loop(expression, Set.empty, true).distinctBy(e => (e.site, e.core, e.scope))
+    loop(expression, Set.empty, true).distinctBy(e => (e.site, e.core, e.scope, e.collection))
   }
 
   /** Flattens slash-scoped key operands in source order; other expressions remain a single operand. */
