@@ -188,7 +188,7 @@ object AnalyzerSmokeStarterSourceActions {
             val afterExclude = DependencyUtils.getDeclaredDependency(module)
             assert(
               afterExclude.exists(_.getCoordinates.getArtifactId == "a"),
-              "Edited declarations must remain discoverable"
+              "Edited declarations must remain discoverable: " + excludePlan.after
             )
             if (shared) assert(excludePlan.after.startsWith(prefix), "Shared definition changed")
             selected = direct

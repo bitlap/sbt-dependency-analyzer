@@ -41,9 +41,9 @@ Select a dependency in the list or tree and open its context menu:
 | Refresh Dependencies | Invalidate graph caches and analyze again. |
 | Refresh Snapshot Dependencies | Update the current module's SNAPSHOT dependencies in the background. |
 
-Removal and exclusion are experimental. Review the before/after preview before applying, or cancel; applying creates one undoable command. Reload sbt after an edit, then refresh the analysis.
+Removal and exclusion are experimental. Review the diff with syntax and change highlighting before applying, or cancel; applying creates one undoable command. Reload sbt after an edit, then refresh the analysis.
 
-Navigation resolves constants, dependency aliases and common dependency expressions. Shared `ModuleID` aliases are edited at their use sites where possible. Statically resolved shared ordered lists are edited at the current module’s reference; computed declarations that cannot be located safely require manual edits. Exact versions take precedence; evicted or dynamic versions fall back to coordinate and scope candidates.
+Navigation resolves constants, dependency aliases and common dependency expressions. Shared `ModuleID` aliases are edited at their use sites where possible. Statically resolved shared ordered lists are edited at the current module’s reference using coordinates, configuration and cross version instead of list positions; computed declarations that cannot be located safely require manual edits. Exact versions take precedence; evicted or dynamic versions fall back to coordinate and scope candidates.
 
 Analysis runs in the background, and failure notifications offer a retry action. Cancellation stops waiting; a submitted sbt command may continue running. Module and scope selectors support Enter; scope checkboxes also support Space.
 

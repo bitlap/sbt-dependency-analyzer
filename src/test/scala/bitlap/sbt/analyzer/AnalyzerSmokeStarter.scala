@@ -301,7 +301,33 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         )
         assert(plan.after.contains(s"($first).exclude(\"transitive\", \"child\")"))
         assert(plan.after.contains(second))
-        paint(DependencyEditPlan.previewComponent(plan), output.resolve("dependency-edit.png"), 1200, 300)
+        val owner          = com.intellij.openapi.util.Disposer.newDisposable()
+        var previewEditors = Array.empty[com.intellij.openapi.editor.Editor]
+        try {
+          val request = DependencyEditPlan.previewRequest(plan)
+          assert(request.getContents.size == 2)
+          assert(request.getUserData(com.intellij.diff.util.DiffUserDataKeys.FORCE_READ_ONLY) == java.lang.Boolean.TRUE)
+          val contents = request.getContents.asScala.map(_.asInstanceOf[com.intellij.diff.contents.DocumentContent])
+          assert(contents.map(_.getDocument.getText).toSeq == Seq(plan.before, plan.after))
+          assert(
+            contents.forall(_.getContentType == plan.declaration.expression.getElement.getContainingFile.getFileType)
+          )
+          val existing  = com.intellij.openapi.editor.EditorFactory.getInstance().getAllEditors.toSet
+          val component = DependencyEditPlan.previewComponent(plan, owner)
+          assert(component != null && component.getPreferredSize.width >= 900)
+          val editors = com.intellij.openapi.editor.EditorFactory.getInstance().getAllEditors.filterNot(existing)
+          previewEditors = editors
+          assert(editors.length == 2 && editors.forall(_.isViewer))
+          assert(editors.map(_.getDocument.getText).toSet == Set(plan.before, plan.after))
+          AnalyzerSmokeStarterCore.eventually("native diff change highlighting") {
+            editors.forall(editor =>
+              editor.getMarkupModel.getAllHighlighters.exists { highlighter =>
+                Option(highlighter.getTextAttributes(editor.getColorsScheme)).exists(_.getBackgroundColor != null)
+              }
+            )
+          }
+        } finally com.intellij.openapi.util.Disposer.dispose(owner)
+        assert(previewEditors.nonEmpty && previewEditors.forall(_.isDisposed))
       }
       check("stale edit preview cannot overwrite a newer document") {
         val d        = declaration(source, first)
@@ -397,10 +423,14 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         val remove =
           DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("g", "a", "1"), true)
         assert(remove.after.contains("val shared = Seq(\"g\" % \"a\" % \"1\")"))
-        assert(remove.after.contains("(shared).patch(0, _root_.scala.collection.immutable.Nil, 1)"))
+        assert(remove.after.contains("(shared).filterNot { dependency =>") && !remove.after.contains(".patch("))
         val exclude =
           DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("t", "child", "2"), false)
-        assert(exclude.after.contains("(shared).updated(0, (shared)(0).exclude(\"t\", \"child\"))"))
+        assert(
+          exclude.after.contains("(shared).map { dependency =>") && exclude.after.contains(
+            "dependency.exclude(\"t\", \"child\") else dependency"
+          )
+        )
         assert(!PsiTreeUtil.hasErrorElements(fixture(remove.after)))
         assert(!PsiTreeUtil.hasErrorElements(fixture(exclude.after)))
       }
@@ -412,7 +442,9 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         assert(found.map(_.collection.map(_._2)) == Seq(Some(0), Some(1)))
         val removal =
           DependencyEditPlan.prepare(project, pointer(found(1)), new UnifiedCoordinates("g", "b", "1"), true)
-        assert(removal.after.contains("(all).patch(1, _root_.scala.collection.immutable.Nil, 1)"))
+        assert(
+          removal.after.contains("(all).filterNot { dependency =>") && removal.after.contains("\"g\", \"b\", \"1\"")
+        )
         for (
           source <- Seq(
             """val all = Seq(computed(), "g" % "a" % "1"); libraryDependencies ++= all""",
@@ -422,6 +454,50 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
           val result = entries(source)
           assert(result.nonEmpty && result.forall(e => !e.editable && e.collection.isEmpty))
         }
+      }
+      check("PSI coordinate edits survive shared-list reordering and distinguish scopes versions and cross versions") {
+        val values = Seq(
+          "\"g\" % \"a\" % \"1\"",
+          "\"g\" %% \"a\" % \"1\"",
+          "\"g\" % \"a\" % \"1\" % Test",
+          "\"g\" % \"a\" % \"2\"",
+          "(\"g\" %% \"a\" % \"1\").cross(CrossVersion.full)"
+        )
+        val prefix = "val shared = Seq(" + values.mkString(", ") + ")"
+        val found  = entries(prefix + "; libraryDependencies ++= shared")
+        assert(found.size == values.size && found.forall(_.editable))
+        val plan = DependencyEditPlan.prepare(project, pointer(found(1)), new UnifiedCoordinates("g", "a", "1"), true)
+        val reordered = plan.after.replace(prefix, "val shared = Seq(" + values.reverse.mkString(", ") + ")")
+        val remaining = entries(reordered)
+        assert(remaining.size == 4)
+        assert(remaining.count(e => e.artifact == "a" && e.version == "1" && e.scope == "compile") == 2)
+        assert(remaining.exists(e => e.scope == "test") && remaining.exists(_.version == "2"))
+        val identities = remaining.flatMap(e => parsing.SbtDeclarationResolver.moduleIdentity(e.site))
+        assert(identities.exists(_.cross.contains("CrossVersion.full")))
+        assert(!identities.contains(parsing.SbtDeclarationResolver.moduleIdentity(found(1).site).get))
+      }
+      check("PSI repeated coordinate edits remain discoverable without exponential re-resolution") {
+        val values = (0 until 12).map(i => s"\"g\" %% \"a$i\" % \"1\"")
+        var text   = "val shared = Seq(" + values.mkString(", ") + "); libraryDependencies ++= shared"
+        for (i <- 0 until 11) {
+          val found = entries(text)
+          assert(found.size == 12 - i && found.forall(_.editable))
+          text = DependencyEditPlan
+            .prepare(project, pointer(found.head), new UnifiedCoordinates("g", "a" + i, "1"), true)
+            .after
+        }
+        assert(entries(text).map(_.artifact) == Seq("a11"))
+      }
+      check("PSI generated coordinate transforms reject unrelated predicate bodies") {
+        val prefix = "val shared = Seq(\"g\" % \"a\" % \"1\"); libraryDependencies ++= "
+        assert(entries(prefix + "shared.filterNot(dependency => dependency.name == \"a\")").isEmpty)
+        val found = entries(prefix + "shared")
+        val plan = DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("g", "a", "1"), true)
+        assert(entries(plan.after.replace("dependency.organization", "other.organization")).isEmpty)
+        val unsupported =
+          entries("val shared = Seq((\"g\" %% \"a\" % \"1\").cross(Custom.full)); libraryDependencies ++= shared")
+        assert(unsupported.size == 1 && !unsupported.head.editable)
+
       }
       check("PSI shared collection preview rejects intervening changes in other build definitions") {
         val found    = entries("""val shared = Seq("g" % "a" % "1"); libraryDependencies ++= shared""").head
@@ -435,7 +511,7 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
             override def run(): Unit = { document.setText("val unrelated = 2"); manager.commitDocument(document) }
           }
         )
-        try { plan.apply(); throw new AssertionError("Stale shared collection index accepted") }
+        try { plan.apply(); throw new AssertionError("Stale shared collection preview accepted") }
         catch { case _: IllegalArgumentException => () }
       }
       check("PSI cyclic references terminate and computed expressions are not guessed") {

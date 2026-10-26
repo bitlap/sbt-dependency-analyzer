@@ -57,12 +57,21 @@ lazy val root = project.in(file(".")).aggregate(api, RootProject(file("external 
     assert((ProjectRef(uri("__EXTERNAL_URI__"), "core-api") / moduleName).value == "external-duplicate")
     assert((LocalProject("core-api") / update / skip).value, "Main user session setting was removed")
     assert((ProjectRef(uri("__EXTERNAL_URI__"), "project1Root") / update / skip).value, "External user session setting was removed")
-    val shared = Seq("fixture" %% "a" % "1", "fixture" %% "b" % "1")
-    val excluded = (shared).updated(0, (shared)(0).exclude("t", "child"))
-    val removed = (excluded).patch(0, _root_.scala.collection.immutable.Nil, 1)
-    assert(shared.map(_.name) == Seq("a", "b") && shared.forall(_.exclusions.isEmpty))
-    assert(excluded.head.exclusions.exists(rule => rule.organization == "t" && rule.name == "child"))
-    assert(excluded.tail == shared.tail && removed == shared.tail)
+    val selected = "fixture" %% "a" % "1"
+    def matches(dependency: ModuleID): Boolean =
+      (dependency.organization, dependency.name, dependency.revision, dependency.configurations.getOrElse("compile"), dependency.crossVersion) ==
+        ("fixture", "a", "1", "compile", ("fixture" %% "a" % "1").crossVersion)
+    val variants = Seq("fixture" % "a" % "1", "fixture" %% "a" % "2", "fixture" %% "a" % "1" % Test,
+      ("fixture" %% "a" % "1").cross(CrossVersion.full), "fixture" %% "b" % "1")
+    val shared = variants.patch(2, Seq(selected, selected), 0)
+    for (input <- Seq(shared, shared.reverse)) {
+      val excluded = (input).map { dependency => if (matches(dependency)) dependency.exclude("t", "child") else dependency }
+      val removed = (input).filterNot { dependency => matches(dependency) }
+      assert(input.forall(_.exclusions.isEmpty))
+      assert(excluded.filter(matches).forall(_.exclusions.exists(rule => rule.organization == "t" && rule.name == "child")))
+      assert(excluded.filterNot(matches) == input.filterNot(matches))
+      assert(removed.size == variants.size && removed.toSet == variants.toSet)
+    }
     println("ANALYZER_SBT_WORKFLOW_PASS")
   }
 )

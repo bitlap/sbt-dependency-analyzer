@@ -142,6 +142,144 @@ object SbtDeclarationResolver {
     case other                  => other
   }
 
+  /** A stable ModuleID identity. Scope and cross version distinguish declarations with otherwise identical coordinates.
+   */
+  final case class ModuleIdentity(group: String, artifact: String, version: String, scope: String, cross: String) {
+
+    def predicate: String =
+      s"""(dependency.organization, dependency.name, dependency.revision,
+         |  dependency.configurations.getOrElse("compile"), dependency.crossVersion) ==
+         |  (${quote(group)}, ${quote(artifact)}, ${quote(version)}, ${quote(
+          scope
+        )}, ($cross).crossVersion)""".stripMargin
+  }
+
+  private def quote(value: String): String =
+    "\"" + value
+      .replace("\\", "\\\\")
+      .replace("\"", "\\\"")
+      .replace("\n", "\\n")
+      .replace("\r", "\\r")
+      .replace("\t", "\\t") + "\""
+
+  /** Reconstructs a literal ModuleID without copying references whose imports may belong to another build file. */
+  def moduleIdentity(expression: ScExpression): Option[ModuleIdentity] = {
+    def crossModifier(expr: ScExpression, seen: Set[PsiElement]): Option[String] = {
+      if (seen(expr) || seen.size > 128) return None
+      val next                                                                                           = seen + expr
+      def modifier(name: String, argument: Option[ScExpression], receiver: ScExpression): Option[String] =
+        if (name == "withConfigurations") None
+        else if (name == "cross") argument.collect {
+          case r: ScReferenceExpression
+              if Set("disabled", "binary", "full", "for3Use2_13", "for2_13Use3")(r.refName) &&
+                r.qualifier.exists(q =>
+                  Set(
+                    "CrossVersion",
+                    "sbt.CrossVersion",
+                    "sbt.librarymanagement.CrossVersion",
+                    "_root_.sbt.librarymanagement.CrossVersion"
+                  )(q.getText)
+                ) =>
+            s".cross(_root_.sbt.librarymanagement.CrossVersion.${r.refName})"
+        }
+        else crossModifier(receiver, next)
+      expr match {
+        case p: ScParenthesisedExpr   => p.innerElement.flatMap(crossModifier(_, next))
+        case r: ScReferenceExpression =>
+          definition(r).flatMap(crossModifier(_, next)).orElse {
+            if (modifiers(r.refName)) r.qualifier.flatMap(modifier(r.refName, None, _)) else None
+          }
+        case c: ScMethodCall =>
+          invoked(c.getEffectiveInvokedExpr) match {
+            case r: ScReferenceExpression if modifiers(r.refName) =>
+              r.qualifier.flatMap(modifier(r.refName, c.argumentExpressions.headOption, _))
+            case _ => None
+          }
+        case i: ScInfixExpr if modifiers(i.operation.refName)   => modifier(i.operation.refName, Some(i.right), i.left)
+        case p: ScPostfixExpr if modifiers(p.operation.refName) => modifier(p.operation.refName, None, p.operand)
+        case i: ScInfixExpr if i.operation.refName == "%"       =>
+          if (coordinate(i.left, next).nonEmpty) crossModifier(i.left, next) else Some("")
+        case _ => None
+      }
+    }
+    for {
+      entry    <- coordinate(expression, Set.empty)
+      modifier <- crossModifier(expression, Set.empty)
+    } yield {
+      val literal = s"${quote(entry.group)} ${entry.cross} ${quote(entry.artifact)} % ${quote(entry.version)}"
+      ModuleIdentity(entry.group, entry.artifact, entry.version, entry.scope, s"($literal)$modifier")
+    }
+  }
+
+  private case class CoordinateTransform(
+    receiver: ScExpression,
+    identity: ModuleIdentity,
+    exclude: Option[(String, String)]
+  )
+
+  /** Recognizes only the exact coordinate predicate emitted by the editor, never arbitrary user lambdas. */
+  private def coordinateTransform(call: ScMethodCall): Option[CoordinateTransform] = {
+    def unwrapped(expr: ScExpression): ScExpression = expr match {
+      case p: ScParenthesisedExpr                                    => p.innerElement.map(unwrapped).getOrElse(p)
+      case b: ScBlock if b.statements.size == 1 && b.exprs.size == 1 => unwrapped(b.exprs.head)
+      case other                                                     => other
+    }
+    def predicate(expr: ScExpression): Option[ModuleIdentity] = unwrapped(expr) match {
+      case i: ScInfixExpr if i.operation.refName == "==" =>
+        val fields =
+          "(dependency.organization,dependency.name,dependency.revision,dependency.configurations.getOrElse(\"compile\"),dependency.crossVersion)"
+        if (i.left.getText.replaceAll("\\s+", "") != fields) None
+        else
+          unwrapped(i.right) match {
+            case tuple: ScTuple if tuple.exprs.size == 5 =>
+              val values = tuple.exprs
+              for {
+                group <- string(values(0)); artifact <- string(values(1)); version <- string(values(2));
+                scope <- string(values(3))
+                cross <- unwrapped(values(4)) match {
+                  case r: ScReferenceExpression if r.refName == "crossVersion" => r.qualifier.flatMap(moduleIdentity)
+                  case _                                                       => None
+                }
+                if (group, artifact, version) == (cross.group, cross.artifact, cross.version)
+              } yield cross.copy(scope = scope)
+            case _ => None
+          }
+      case _ => None
+    }
+    invoked(call.getEffectiveInvokedExpr) match {
+      case r: ScReferenceExpression if Set("filterNot", "map")(r.refName) && call.argumentExpressions.size == 1 =>
+        for {
+          receiver <- r.qualifier
+          function <- unwrapped(call.argumentExpressions.head) match {
+            case f: ScFunctionExpr if f.parameters.size == 1 && f.parameters.head.name == "dependency" => Some(f)
+            case _                                                                                     => None
+          }
+          body   <- function.result.map(unwrapped)
+          result <-
+            if (r.refName == "filterNot") predicate(body).map(CoordinateTransform(receiver, _, None))
+            else
+              body match {
+                case conditional: ScIf if conditional.elseExpression.exists(_.getText == "dependency") =>
+                  for {
+                    identity <- conditional.condition.flatMap(predicate)
+                    excluded <- conditional.thenExpression.collect { case c: ScMethodCall => c }
+                    method   <- invoked(excluded.getEffectiveInvokedExpr) match {
+                      case ref: ScReferenceExpression
+                          if ref.refName == "exclude" && ref.qualifier.exists(_.getText == "dependency") =>
+                        Some(ref)
+                      case _ => None
+                    }
+                    if excluded.argumentExpressions.size == 2
+                    group    <- string(excluded.argumentExpressions.head)
+                    artifact <- string(excluded.argumentExpressions(1))
+                  } yield CoordinateTransform(receiver, identity, Some(group -> artifact))
+                case _ => None
+              }
+        } yield result
+      case _ => None
+    }
+  }
+
   private def position(expr: ScExpression): Option[Int] = expr.getText.trim.toIntOption.filter(_ >= 0)
 
   private def indexed(call: ScMethodCall): Option[(ScExpression, Int)] =
@@ -176,44 +314,68 @@ object SbtDeclarationResolver {
   /** Counts only statically ordered collections. Unknown factories, sets and incomplete expressions cannot produce a
    *  safe positional edit at a shared collection's use site.
    */
-  private def sequenceSize(expr: ScExpression, seen: Set[PsiElement] = Set.empty): Option[Int] = {
+  private def sequenceSize(expr: ScExpression, memo: ResolutionMemo, seen: Set[PsiElement] = Set.empty): Option[Int] = {
     if (seen(expr) || seen.size > 128) return None
-    val next = seen + expr
-    if (coordinate(expr, Set.empty).nonEmpty) Some(1)
-    else
-      expr match {
-        case p: ScParenthesisedExpr                        => p.innerElement.flatMap(sequenceSize(_, next))
-        case t: ScTypedExpression                          => sequenceSize(t.expr, next)
-        case r: ScReferenceExpression                      => definition(r).flatMap(sequenceSize(_, next))
-        case i: ScInfixExpr if i.operation.refName == "++" =>
-          for { a <- sequenceSize(i.left, next); b <- sequenceSize(i.right, next) } yield a + b
-        case c: ScMethodCall =>
-          invoked(c.getEffectiveInvokedExpr) match {
-            case r: ScReferenceExpression if Set("Seq", "List", "Vector")(r.refName) =>
-              val sizes = c.argumentExpressions.map(sequenceSize(_, next))
-              if (sizes.forall(_.nonEmpty)) Some(sizes.flatten.sum) else None
-            case r: ScReferenceExpression if modifiers(r.refName) =>
-              r.qualifier.flatMap(sequenceSize(_, next)).filter(_ == 1)
-            case _ =>
-              transform(c).flatMap { (receiver, operation, index) =>
-                sequenceSize(receiver, next).filter(index < _).flatMap { size =>
-                  if (operation == "patch") Some(size - 1)
-                  else sequenceSize(c.argumentExpressions(1), next).filter(_ == 1).map(_ => size)
-                }
-              }.orElse(indexed(c).flatMap { (receiver, index) =>
-                sequenceSize(receiver, next).filter(index < _).map(_ => 1)
-              })
-          }
-        case b: ScBlockExpr => b.exprs.lastOption.flatMap(sequenceSize(_, next))
-        case _              => None
-      }
+    if (memo.sizes.contains(expr)) return memo.sizes(expr)
+    val next   = seen + expr
+    val result =
+      if (coordinate(expr, Set.empty).nonEmpty) Some(1)
+      else
+        expr match {
+          case p: ScParenthesisedExpr                        => p.innerElement.flatMap(sequenceSize(_, memo, next))
+          case t: ScTypedExpression                          => sequenceSize(t.expr, memo, next)
+          case r: ScReferenceExpression                      => definition(r).flatMap(sequenceSize(_, memo, next))
+          case i: ScInfixExpr if i.operation.refName == "++" =>
+            for { a <- sequenceSize(i.left, memo, next); b <- sequenceSize(i.right, memo, next) } yield a + b
+          case c: ScMethodCall =>
+            invoked(c.getEffectiveInvokedExpr) match {
+              case r: ScReferenceExpression if Set("Seq", "List", "Vector")(r.refName) =>
+                val sizes = c.argumentExpressions.map(sequenceSize(_, memo, next))
+                if (sizes.forall(_.nonEmpty)) Some(sizes.flatten.sum) else None
+              case r: ScReferenceExpression if modifiers(r.refName) =>
+                r.qualifier.flatMap(sequenceSize(_, memo, next)).filter(_ == 1)
+              case _ =>
+                coordinateTransform(c).flatMap { change =>
+                  sequenceSize(change.receiver, memo, next).map { size =>
+                    if (change.exclude.nonEmpty) size
+                    else
+                      size - dependenciesWithMemo(change.receiver, None, memo)
+                        .count(e => moduleIdentity(e.site).contains(change.identity))
+                  }
+                }.orElse(transform(c).flatMap { (receiver, operation, index) =>
+                  sequenceSize(receiver, memo, next).filter(index < _).flatMap { size =>
+                    if (operation == "patch") Some(size - 1)
+                    else sequenceSize(c.argumentExpressions(1), memo, next).filter(_ == 1).map(_ => size)
+                  }
+                }.orElse(indexed(c).flatMap { (receiver, index) =>
+                  sequenceSize(receiver, memo, next).filter(index < _).map(_ => 1)
+                }))
+            }
+          case b: ScBlockExpr => b.exprs.lastOption.flatMap(sequenceSize(_, memo, next))
+          case _              => None
+        }
+    if (result.nonEmpty) memo.sizes.put(expr, result)
+    result
   }
 
   /** Collects supported coordinate declarations, retaining use-site scope and editability. Ordered collection aliases
    *  retain a safe use-site position; unknown collections remain navigation-only. projectId limits explicit project-key
    *  owners. Requires read access and checks IDE cancellation during traversal.
    */
-  def dependencies(expression: ScExpression, projectId: Option[String] = None): Seq[Entry] = {
+  private class ResolutionMemo {
+    val sizes   = scala.collection.mutable.Map.empty[ScExpression, Option[Int]]
+    val entries = scala.collection.mutable.Map.empty[(ScExpression, Option[String]), Seq[Entry]]
+  }
+
+  def dependencies(expression: ScExpression, projectId: Option[String] = None): Seq[Entry] =
+    dependenciesWithMemo(expression, projectId, new ResolutionMemo)
+
+  private def dependenciesWithMemo(
+    expression: ScExpression,
+    projectId: Option[String],
+    memo: ResolutionMemo
+  ): Seq[Entry] = {
+    if (memo.entries.contains((expression, projectId))) return memo.entries((expression, projectId))
     def loop(expr: ScExpression, seen: Set[PsiElement], editable: Boolean): Seq[Entry] = {
       com.intellij.openapi.progress.ProgressManager.checkCanceled()
       if (seen.contains(expr) || seen.size > 128) return Nil
@@ -227,9 +389,9 @@ object SbtDeclarationResolver {
             case r: ScReferenceExpression =>
               definition(r).toSeq.flatMap { target =>
                 val entries = loop(target, next, false)
-                if (sequenceSize(target).contains(entries.size))
+                if (sequenceSize(target, memo).contains(entries.size))
                   entries.zipWithIndex.map { (entry, index) =>
-                    entry.copy(editable = true, collection = Some(r -> index))
+                    entry.copy(editable = moduleIdentity(entry.site).nonEmpty, collection = Some(r -> index))
                   }
                 else entries.map(_.copy(editable = false, collection = None))
               }
@@ -256,28 +418,42 @@ object SbtDeclarationResolver {
                       modified(value, r.refName, call.argumentExpressions.headOption).copy(site = call)
                     )
                 case _ =>
-                  transform(call) match {
-                    case Some((receiver, operation, index)) =>
-                      val values   = loop(receiver, next, false)
-                      val complete = sequenceSize(receiver).contains(values.size) && index < values.size
-                      if (!complete) Nil
+                  coordinateTransform(call) match {
+                    case Some(change) =>
+                      val values = loop(change.receiver, next, false)
+                      if (!sequenceSize(change.receiver, memo).contains(values.size)) Nil
                       else {
-                        val changed =
-                          if (operation == "patch") values.patch(index, Nil, 1)
-                          else {
-                            val replacement = loop(call.argumentExpressions(1), next, false)
-                            if (replacement.size == 1) values.updated(index, replacement.head) else Nil
-                          }
-                        changed.zipWithIndex.map { (value, offset) =>
-                          value.copy(editable = true, collection = Some(call -> offset))
+                        val retained =
+                          if (change.exclude.nonEmpty) values
+                          else values.filterNot(e => moduleIdentity(e.site).contains(change.identity))
+                        retained.zipWithIndex.map { (entry, index) =>
+                          entry.copy(editable = moduleIdentity(entry.site).nonEmpty, collection = Some(call -> index))
                         }
                       }
                     case None =>
-                      indexed(call).toSeq.flatMap { (receiver, index) =>
-                        val values = loop(receiver, next, false)
-                        if (sequenceSize(receiver).contains(values.size))
-                          values.lift(index).map(_.copy(site = call, editable = editable, collection = None))
-                        else None
+                      transform(call) match {
+                        case Some((receiver, operation, index)) =>
+                          val values   = loop(receiver, next, false)
+                          val complete = sequenceSize(receiver, memo).contains(values.size) && index < values.size
+                          if (!complete) Nil
+                          else {
+                            val changed =
+                              if (operation == "patch") values.patch(index, Nil, 1)
+                              else {
+                                val replacement = loop(call.argumentExpressions(1), next, false)
+                                if (replacement.size == 1) values.updated(index, replacement.head) else Nil
+                              }
+                            changed.zipWithIndex.map { (value, offset) =>
+                              value.copy(editable = true, collection = Some(call -> offset))
+                            }
+                          }
+                        case None =>
+                          indexed(call).toSeq.flatMap { (receiver, index) =>
+                            val values = loop(receiver, next, false)
+                            if (sequenceSize(receiver, memo).contains(values.size))
+                              values.lift(index).map(_.copy(site = call, editable = editable, collection = None))
+                            else None
+                          }
                       }
                   }
               }
@@ -286,7 +462,9 @@ object SbtDeclarationResolver {
           }
       }
     }
-    loop(expression, Set.empty, true).distinctBy(e => (e.site, e.core, e.scope, e.collection))
+    val result = loop(expression, Set.empty, true).distinctBy(e => (e.site, e.core, e.scope, e.collection))
+    memo.entries.put((expression, projectId), result)
+    result
   }
 
   /** Flattens slash-scoped key operands in source order; other expressions remain a single operand. */

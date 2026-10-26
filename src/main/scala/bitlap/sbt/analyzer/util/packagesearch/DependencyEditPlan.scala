@@ -9,7 +9,6 @@ import org.jetbrains.plugins.scala.lang.psi.api.expr.{ ScArgumentExprList, ScInf
 
 import com.intellij.buildsystem.model.unified.UnifiedCoordinates
 import com.intellij.openapi.command.WriteCommandAction
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.psi.{ PsiDocumentManager, PsiWhiteSpace }
@@ -61,7 +60,7 @@ object DependencyEditPlan {
   private def quoted(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
   /** Builds an edit without modifying PSI or the document. Removal supports a += assignment or an argument-list element
-   *  and removes the adjacent comma when needed. Ordered shared collections use patch/updated at the module reference.
+   *  and removes the adjacent comma when needed. Shared collections use coordinate predicates at the module reference.
    *  Exclusion wraps the enclosing dependency expression. Unknown, invalid or read-only targets are rejected.
    *
    *  @param remove
@@ -82,12 +81,20 @@ object DependencyEditPlan {
     val before = document.getText
     val ranges = scala.collection.mutable.ListBuffer.empty[(Int, Int, String)]
     if (declaration.collection.nonEmpty) {
-      val index       = declaration.collection.get._2
-      val reference   = s"(${expression.getText})"
-      val replacement =
-        if (remove) s"$reference.patch($index, _root_.scala.collection.immutable.Nil, 1)"
+      val identity = bitlap.sbt.analyzer.parsing.SbtDeclarationResolver
+        .moduleIdentity(declaration.resolve.get._3)
+        .getOrElse(throw new IllegalArgumentException("Cannot determine the shared dependency identity safely"))
+      val reference = s"(${expression.getText})"
+      val lineStart = before.lastIndexOf('\n', expression.getTextRange.getStartOffset - 1) + 1
+      val indent    =
+        before.substring(lineStart, expression.getTextRange.getStartOffset).takeWhile(c => c == ' ' || c == '\t')
+      val predicate = identity.predicate.replace("\n", "\n" + indent + "  ")
+      val body      =
+        if (remove) predicate
         else
-          s"$reference.updated($index, $reference($index).exclude(${quoted(selected.getGroupId)}, ${quoted(selected.getArtifactId)}))"
+          s"if ($predicate) dependency.exclude(${quoted(selected.getGroupId)}, ${quoted(selected.getArtifactId)}) else dependency"
+      val method      = if (remove) "filterNot" else "map"
+      val replacement = s"$reference.$method { dependency =>\n$indent  $body\n$indent}"
       ranges += ((expression.getTextRange.getStartOffset, expression.getTextRange.getEndOffset, replacement))
     } else if (remove) {
       val target = expression.getParent match {
@@ -136,28 +143,31 @@ object DependencyEditPlan {
     )
   }
 
-  /** Creates read-only before/after views of the entire file for the prepared edit. */
-  def previewComponent(plan: DependencyEditPlan): JComponent = {
-    def editor(title: String, text: String): JPanel = {
-      val area = new JTextArea(text, 25, 48)
-      area.setEditable(false)
-      area.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12))
-      area.setCaretPosition(0)
-      val panel = new JPanel(new java.awt.BorderLayout())
-      panel.add(new JLabel(title), java.awt.BorderLayout.NORTH)
-      panel.add(new JScrollPane(area), java.awt.BorderLayout.CENTER)
-      panel
-    }
-    val split = new JSplitPane(
-      JSplitPane.HORIZONTAL_SPLIT,
-      editor(SbtDependencyAnalyzerBundle.message("analyzer.edit.before"), plan.before),
-      editor(SbtDependencyAnalyzerBundle.message("analyzer.edit.after"), plan.after)
+  /** Embeds the IDE diff viewer with syntax and change highlighting; the caller owns its lifetime. */
+  private[analyzer] def previewRequest(plan: DependencyEditPlan): com.intellij.diff.requests.SimpleDiffRequest = {
+    val factory  = com.intellij.diff.DiffContentFactory.getInstance()
+    val fileType = plan.declaration.editExpression.get.getContainingFile.getFileType
+    val request  = new com.intellij.diff.requests.SimpleDiffRequest(
+      plan.declaration.editLocation,
+      factory.create(plan.project, plan.before, fileType),
+      factory.create(plan.project, plan.after, fileType),
+      SbtDependencyAnalyzerBundle.message("analyzer.edit.before"),
+      SbtDependencyAnalyzerBundle.message("analyzer.edit.after")
     )
-    split.setResizeWeight(0.5)
-    val panel = new JPanel(new java.awt.BorderLayout())
-    panel.add(new JLabel(plan.declaration.editLocation), java.awt.BorderLayout.NORTH)
-    panel.add(split, java.awt.BorderLayout.CENTER)
-    panel
+    request.putUserData(com.intellij.diff.util.DiffUserDataKeys.FORCE_READ_ONLY, java.lang.Boolean.TRUE)
+    request.putUserData(
+      com.intellij.diff.util.DiffUserDataKeysEx.SCROLL_TO_CHANGE,
+      com.intellij.diff.util.DiffUserDataKeysEx.ScrollToPolicy.FIRST_CHANGE
+    )
+    request
+  }
+
+  def previewComponent(plan: DependencyEditPlan, parent: com.intellij.openapi.Disposable): JComponent = {
+    val request = previewRequest(plan)
+    val viewer  = com.intellij.diff.DiffManager.getInstance().createRequestPanel(plan.project, parent, null)
+    viewer.setRequest(request)
+    viewer.getComponent.setPreferredSize(new java.awt.Dimension(1000, 600))
+    viewer.getComponent
   }
 
   /** Shows the review dialog on the EDT and returns whether the user accepted; does not apply the plan. */
@@ -165,7 +175,7 @@ object DependencyEditPlan {
     val dialog = new DialogWrapper(plan.project) {
       setTitle(title)
       setOKButtonText(SbtDependencyAnalyzerBundle.message("analyzer.edit.apply"))
-      override def createCenterPanel(): JComponent = previewComponent(plan)
+      override def createCenterPanel(): JComponent = previewComponent(plan, getDisposable)
       init()
     }
     dialog.showAndGet()
