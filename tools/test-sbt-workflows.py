@@ -46,7 +46,7 @@ lazy val duplicate = Project("core-api", file("duplicate-directory")).settings(
 )
 ''')
 (work / "build.sbt").write_text(common + '''lazy val verifyWorkflow = taskKey[Unit]("Verify analyzer sbt workflow")
-lazy val root = project.in(file(".")).aggregate(api, RootProject(file("external build"))).settings(
+lazy val root = project.in(file(".")).aggregate(api, browser, server, RootProject(file("external build"))).settings(
   moduleName := "published-root", organization := "fixture.root",
   verifyWorkflow := {
     assert((LocalProject("core-api") / moduleName).value == "published-api")
@@ -78,6 +78,8 @@ lazy val root = project.in(file(".")).aggregate(api, RootProject(file("external 
 lazy val api = Project("core-api", file("different-directory")).settings(
   moduleName := "published-api", organization := "fixture.api"
 )
+lazy val browser = Project("coreJS", file("browser-directory")).settings(moduleName := "same-cross-name")
+lazy val server = Project("coreJVM", file("server-directory")).settings(moduleName := "same-cross-name")
 lazy val detached = Project("detached-tools", file("unaggregated-directory")).settings(
   moduleName := "published-detached", organization := "fixture.detached"
 )
@@ -86,6 +88,11 @@ reference = f'ProjectRef(uri("{uri}"), "project1Root")'
 selector = f"{{{uri}}}project1Root"
 commands = [
     "projects",
+    'eval println("ANALYZER_MODULE_NAMES_BEGIN")',
+    f"show {{{work.resolve().as_uri()}/}}root / moduleName",
+    f"show {{{work.resolve().as_uri()}/}}detached-tools / moduleName",
+    f"show {{{child.resolve().as_uri()}/}}core-api / moduleName",
+    'eval println("ANALYZER_MODULE_NAMES_END")',
     'set LocalProject("core-api") / update / skip := true',
     f'set {reference} / update / skip := true',
     "session list",
@@ -120,6 +127,11 @@ with log.open("w") as output:
 text = log.read_text()
 if result.returncode or "ANALYZER_SBT_WORKFLOW_PASS" not in text:
     raise SystemExit(f"sbt workflow failed; see {log}\n{text[-5000:]}")
+names_output = text.split("ANALYZER_MODULE_NAMES_BEGIN", 1)[1].split("ANALYZER_MODULE_NAMES_END", 1)[0]
+for name in ("published-root", "published-api", "external-published", "published-detached", "external-duplicate"):
+    assert name in names_output, f"Missing moduleName result: {name}"
+assert names_output.count("same-cross-name") == 2, "Platform projects must retain separate equal publication names"
+assert 'ProjectRef(uri("' in names_output, "External aggregate output must retain a build-qualified heading"
 for directory, scopes, coordinate in expected:
     for scope in scopes:
         dot = directory / "target" / f"dependencies-{scope}.dot"
@@ -128,4 +140,4 @@ for directory, scopes, coordinate in expected:
 runtime = "fixture.runtime:runtime-only:1.0.0"
 assert runtime in (child / "target/dependencies-test.dot").read_text(), "External Runtime dependency missing from Test graph"
 assert runtime not in (child / "target/dependencies-compile.dot").read_text(), "Runtime leaked into Compile graph"
-print(f"PASS real sbt RootProject/scoped queries, duplicate IDs, seven DOT outputs, Runtime scope and session cleanup ({time.monotonic() - started:.2f}s)")
+print(f"PASS real sbt aggregated module names, RootProject/scoped queries, duplicate IDs, seven DOT outputs, Runtime scope and session cleanup ({time.monotonic() - started:.2f}s)")

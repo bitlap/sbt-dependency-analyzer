@@ -9,9 +9,11 @@ import com.intellij.openapi.project.Project
  */
 final class LoadedSbtProjectsTask extends SbtShellOutputAnalysisTask[Set[SbtProjectReference]] {
 
-  override def executeCommand(project: Project): Set[SbtProjectReference] = {
-    val loaded = SbtProjectReference.loadedProjects(getCommandOutput(project, "projects"))
-    require(loaded.nonEmpty, "The active sbt shell did not report any loaded projects")
-    loaded
+  override def executeCommand(project: Project): Set[SbtProjectReference] = executeInventory(project).projects
+
+  def executeInventory(project: Project): SbtProjectReference.Inventory = {
+    val inventory = SbtProjectReference.inventory(getCommandOutput(project, "projects"))
+    require(inventory.projects.nonEmpty, "The active sbt shell did not report any loaded projects")
+    inventory
   }
 }

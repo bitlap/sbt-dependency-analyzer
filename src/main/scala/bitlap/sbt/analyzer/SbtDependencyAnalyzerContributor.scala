@@ -54,7 +54,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
 
   @volatile
   private var moduleIdArtifactIds: Map[String, String] = Map.empty
-  @volatile private var loadedProjects                 = Option.empty[Set[bitlap.sbt.analyzer.util.SbtProjectReference]]
+  @volatile private var loadedProjects                 = Option.empty[SbtProjectReference.Inventory]
 
   private lazy val projects: ConcurrentHashMap[DependencyAnalyzerProject, ModuleNode] =
     ConcurrentHashMap[DependencyAnalyzerProject, ModuleNode]()
@@ -302,22 +302,14 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     }
   }
 
-  private def getModuleIdArtifactIds(project: Project, moduleId: String): Map[String, String] = {
-    if (!moduleIdArtifactIds.contains(moduleId)) {
-      val name = new ModuleNameTask().executeForModule(project, moduleId)
-      moduleIdArtifactIds = moduleIdArtifactIds.updated(moduleId, name)
-    }
-    moduleIdArtifactIds
-  }
-
   private def getOrRefreshData(moduleData: ModuleData): JList[DependencyScopeNode] = {
     if (moduleData.getModuleName == Constants.PROJECT) return Collections.emptyList()
     val module = findModule(project, moduleData)
     if (module == null || module.isDisposed) return Collections.emptyList()
-    val revision = generation.get()
-    val moduleId = sbtProjectSelector(project, moduleData)
-    val loaded   = loadedProjects.getOrElse {
-      val result = new bitlap.sbt.analyzer.task.LoadedSbtProjectsTask().executeCommand(project)
+    val revision  = generation.get()
+    val moduleId  = sbtProjectSelector(project, moduleData)
+    val inventory = loadedProjects.filter(_ => moduleIdArtifactIds.nonEmpty).getOrElse {
+      val result = new bitlap.sbt.analyzer.task.LoadedSbtProjectsTask().executeInventory(project)
       if (revision == generation.get()) loadedProjects = Some(result)
       result
     }
@@ -327,10 +319,10 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
       .filter(d =>
         bitlap.sbt.analyzer.util.SbtProjectReference
           .fromSelector(sbtProjectSelector(project, d))
-          .exists(loaded.contains)
+          .exists(inventory.projects.contains)
       )
       .toList
-    if (!bitlap.sbt.analyzer.util.SbtProjectReference.fromSelector(moduleId).exists(loaded.contains))
+    if (!bitlap.sbt.analyzer.util.SbtProjectReference.fromSelector(moduleId).exists(inventory.projects.contains))
       throw new IllegalArgumentException(
         "This linked build is not loaded by the active sbt shell; open it in a separate IDE project to analyze it"
       )
@@ -340,12 +332,30 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     val cached = configurationNodesMap.get(key)
     if (cached != null && ttl > 0 && System.currentTimeMillis() - cached.created < ttl) return cached.nodes
     // Query imported projects only when their build is actually loaded by this shell.
-    accessible.foreach(d => getModuleIdArtifactIds(project, sbtProjectSelector(project, d)))
+    val references = accessible.flatMap(d => SbtProjectReference.fromSelector(sbtProjectSelector(project, d)))
+    val preferred  = accessible.flatMap { data =>
+      SbtProjectReference.fromSelector(sbtProjectSelector(project, data)).filter { ref =>
+        ref.buildUri.getScheme == "file" && scala.util
+          .Try(
+            Path.of(ref.buildUri).toAbsolutePath.normalize() ==
+              Path.of(data.getLinkedExternalProjectPath).toAbsolutePath.normalize()
+          )
+          .getOrElse(false)
+      }
+    }.sortBy(_.selector)
+    val names = new ModuleNameTask().executeForProjects(
+      project,
+      references,
+      inventory.current,
+      preferred,
+      moduleIdArtifactIds
+    )
+    if (revision == generation.get()) moduleIdArtifactIds = names
     val nodes = moduleData.loadDependencies(
       project,
       getOrganization(moduleId),
       accessible.map(d => sbtProjectSelector(project, d) -> d.getLinkedExternalProjectPath).toMap,
-      moduleIdArtifactIds,
+      names,
       hasNotified
     )
     if (revision == generation.get() && ttl > 0 && !nodes.isEmpty)

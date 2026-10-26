@@ -14,6 +14,7 @@ python3 tools/test-sbt-workflows.py
 | DOT 读取 | sbt 输出、注释/转义/边链、坏文件拒绝、复杂子图回退 Graphviz | `AnalyzerRegressionSpec`、`CoreFlowSpec` |
 | 图构建 | 直接/传递关系、菱形共享路径、淘汰标签、孤立节点、环与深度保护；12 组确定性随机 DAG 对比全部预期路径 | `AnalyzerRegressionSpec`、`CoreFlowSpec` |
 | 缓存 | TTL、禁用缓存、文件替换/删除、容量、项目隔离、失效中的计算不能回填、声明空结果不缓存、导入/根目录/索引状态变化后重试 | `AnalyzerRegressionSpec`、`CoreFlowSpec` |
+| 模块名称查询 | 按构建 URI + 项目 ID 记录聚合结果，仅补查缺失项目；ProjectRef 与当前项目解析、跨平台同名隔离；48 条日志回放降至 6 条查询，48 个身份全部保留 | `SbtModuleNameQuerySpec`、真实 sbt 夹具 |
 | 项目与模块 | sbt ID / IDEA 名称 / 目录 / moduleName 分离；JVM、JS、Native 元数据聚合与消歧；映射歧义不误报未解析；未聚合模块、RootProject 构建 URI 与同名 ID 隔离 | `SbtModuleIdentitySpec`、PSI 回归、真实 sbt 夹具 |
 | 声明解析 | `%` / `%%` / `%%%`、常量/别名、Scope、修饰器、跨文件共享序列及物理源码导航、project/crossProject 设置归属、自定义工厂静态路径、条件依赖分支、循环终止 | `DeclarationMatcherSpec`、`AnalyzerSmokeStarter` |
 | 分析作用域 | Compile / Test / Provided 匹配；全部 8 种禁用组合控制 contributor | `DeclarationMatcherSpec`、`AnalyzerSmokeStarterUiFlows` |
@@ -32,11 +33,11 @@ python3 tools/test-sbt-workflows.py
 
 ## 本轮验证结果
 
-2026-10-26 本地验证通过：
+2026-10-27 本地验证通过：
 
-- `sbt test`：59 项，断言运行时间 2.148 秒（不含构建准备）。
-- `sbt psiTest`：80 项，检查体耗时合计 23.517 秒（不含构建准备及 IDE 启动）。
-- 真实 sbt 夹具：通过，22.56 秒，涵盖共享列表重排和按坐标修改、RootProject、同名 ID、未聚合模块、七份 DOT、外部 Runtime 依赖和 session 清理，详见 [#144 修复记录](issue-144.md)。
+- `sbt test`：71 项，断言运行时间 1.764 秒（不含构建准备）。
+- `sbt psiTest`：80 项，检查体耗时合计 12.735 秒（不含构建准备及 IDE 启动）。
+- 真实 sbt 夹具：通过，27.55 秒，涵盖聚合 moduleName 批量结果复用、未聚合模块、跨平台同名、共享列表重排和按坐标修改、RootProject、同名 ID、未聚合模块、七份 DOT、外部 Runtime 依赖和 session 清理，详见 [#144 修复记录](issue-144.md)。
 - `sbt check`、`git diff --check`、Python 语法及文档链接检查通过。
 - Plugin Verifier：Compatible，保留 19 处弃用、31 处实验性和 17 处内部 API 提示。
 

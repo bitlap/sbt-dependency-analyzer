@@ -63,18 +63,30 @@ object SbtProjectReference {
   /** Parses build headings and project rows from sbt projects output. Accepts * for the current project and (*) for a
    *  build root; project IDs are paired with their build URI.
    */
-  def loadedProjects(output: String): Set[SbtProjectReference] = {
-    var build  = Option.empty[String]
-    val result = Set.newBuilder[SbtProjectReference]
+  final case class Inventory(projects: Set[SbtProjectReference], current: Option[SbtProjectReference])
+
+  def loadedProjects(output: String): Set[SbtProjectReference] = inventory(output).projects
+
+  /** The * marker identifies the current project; (*) only marks a build root. Keeping this context lets shell output
+   *  with local project IDs be distinguished from build-qualified external ProjectRef headings.
+   */
+  def inventory(output: String): Inventory = {
+    var build   = Option.empty[String]
+    var current = Option.empty[SbtProjectReference]
+    val result  = Set.newBuilder[SbtProjectReference]
     output.linesIterator.foreach { line =>
       val text = line.trim.stripPrefix("[info]").trim
       if (text.startsWith("In "))
         build = Try(URI.create(text.stripPrefix("In ").trim)).toOption.filter(_.isAbsolute).map(_.toString)
       else {
         val id = text.stripPrefix("(*)").stripPrefix("*").trim
-        if (validId(id)) build.foreach(uri => result += apply(uri, id))
+        if (validId(id)) build.foreach { uri =>
+          val ref = apply(uri, id)
+          result += ref
+          if (text.startsWith("*")) current = Some(ref)
+        }
       }
     }
-    result.result()
+    Inventory(result.result(), current)
   }
 }
