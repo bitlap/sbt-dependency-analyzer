@@ -131,6 +131,147 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         val expr = PsiTreeUtil.findChildrenOfType(file, classOf[ScInfixExpr]).asScala.find(_.getText == target).get
         DependencyDeclaration((expr, "Test", expr))
       }
+      check("Go to remains visible for multiple declarations and recovers across context changes") {
+        import com.intellij.openapi.actionSystem.*
+        import com.intellij.openapi.externalSystem.dependency.analyzer.*
+        import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys
+        val declarations = List(declaration(source, first), declaration(source, first))
+        var choices      = declarations
+        val action       = new bitlap.sbt.analyzer.action.SbtDependencyAnalyzerGoToAction {
+          override protected def candidates(e: AnActionEvent): List[DependencyDeclaration] = choices
+        }
+        val dependency = new DADependency(new DAArtifact("g", "a", "1"), new DAScope("test"), null, java.util.List.of())
+        var sbtContext = true
+        val context: DataContext = dataId =>
+          if (CommonDataKeys.PROJECT.is(dataId)) project
+          else if (ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID.is(dataId) && sbtContext)
+            org.jetbrains.sbt.project.SbtProjectSystem.Id
+          else if (DependencyAnalyzerView.Companion.getDEPENDENCY.is(dataId)) dependency
+          else null
+        val event = AnActionEvent.createFromDataContext(
+          DependencyAnalyzerView.ACTION_PLACE,
+          action.getTemplatePresentation.clone(),
+          context
+        )
+        action.update(event)
+        assert(
+          event.getPresentation.isVisible,
+          "Multiple declarations must offer a chooser instead of hiding the action"
+        )
+        assert(event.getPresentation.isEnabled == !com.intellij.openapi.project.DumbService.isDumb(project))
+        assert(action.getNavigatable(event) == null, "No arbitrary declaration should be selected")
+        choices = Nil
+        action.update(event)
+        assert(
+          event.getPresentation.isVisible && !event.getPresentation.isEnabled,
+          "Missing declaration should disable rather than hide"
+        )
+        sbtContext = false
+        action.update(event)
+        assert(!event.getPresentation.isVisible && !event.getPresentation.isEnabled)
+        sbtContext = true
+        choices = declarations
+        action.update(event)
+        assert(event.getPresentation.isVisible, "Hidden presentation must recover")
+        val exclude = new bitlap.sbt.analyzer.action.SbtDependencyAnalyzerExcludeAction
+        exclude.update(event)
+        assert(
+          event.getPresentation.isVisible && !event.getPresentation.isEnabled,
+          "Exclude must remain visible when no modifiable declaration exists"
+        )
+      }
+      check("tree and usages popup selection follows the clicked row on press and release") {
+        import bitlap.sbt.analyzer.jbexternal.util.*
+        import com.intellij.openapi.externalSystem.dependency.analyzer.*
+        import com.intellij.openapi.observable.properties.AtomicProperty
+        import javax.swing.tree.*
+        val a = new DADependency(new DAArtifact("g", "a", "1"), new DAScope("compile"), null, java.util.List.of())
+        val b = new DADependency(new DAArtifact("g", "b", "1"), new DAScope("test"), null, java.util.List.of())
+        def snapshot(provider: com.intellij.openapi.actionSystem.UiDataProvider): Map[String, Any] = {
+          val values = scala.collection.mutable.Map.empty[String, Any]
+          val sink   = java.lang.reflect.Proxy
+            .newProxyInstance(
+              classOf[com.intellij.openapi.actionSystem.DataSink].getClassLoader,
+              Array(classOf[com.intellij.openapi.actionSystem.DataSink]),
+              (_, method, args) => {
+                if (method.getName == "set")
+                  values.put(args(0).asInstanceOf[com.intellij.openapi.actionSystem.DataKey[?]].getName, args(1))
+                else if (method.getName == "setNull")
+                  values.put(args(0).asInstanceOf[com.intellij.openapi.actionSystem.DataKey[?]].getName, null)
+                null
+              }
+            )
+            .asInstanceOf[com.intellij.openapi.actionSystem.DataSink]
+          provider.uiDataSnapshot(sink)
+          values.toMap
+        }
+        for (usages <- Seq(false, true)) {
+          val root = new DefaultMutableTreeNode("root")
+          root.add(new DefaultMutableTreeNode(new DependencyGroup(java.util.List.of(a))))
+          root.add(new DefaultMutableTreeNode(new DependencyGroup(java.util.List.of(b))))
+          val model                        = new DefaultTreeModel(root)
+          val tree: AbstractDependencyTree =
+            if (usages) new UsagesTree(model, new AtomicProperty(false), new AtomicProperty(false))
+            else new DependencyTree(model, new AtomicProperty(false), new AtomicProperty(false))
+          tree.setRootVisible(false)
+          tree.setSize(600, 400)
+          tree.expandPath(new TreePath(root))
+          tree.setSelectionRow(0)
+          val listener =
+            tree.getMouseListeners.find(_.getClass.getEnclosingClass == classOf[AbstractDependencyTree]).get
+          val row   = tree.getRowBounds(1)
+          val press = new java.awt.event.MouseEvent(
+            tree,
+            java.awt.event.MouseEvent.MOUSE_PRESSED,
+            System.currentTimeMillis(),
+            java.awt.event.InputEvent.BUTTON3_DOWN_MASK,
+            row.x + 2,
+            row.y + 2,
+            1,
+            true,
+            java.awt.event.MouseEvent.BUTTON3
+          )
+          listener.mousePressed(press)
+          assert(tree.getSelectionRows.toSeq == Seq(1))
+          assert(snapshot(tree)(DependencyAnalyzerView.Companion.getDEPENDENCY.getName) == b)
+          tree.setSelectionRow(0)
+          val release = new java.awt.event.MouseEvent(
+            tree,
+            java.awt.event.MouseEvent.MOUSE_RELEASED,
+            System.currentTimeMillis(),
+            0,
+            row.x + 2,
+            row.y + 2,
+            1,
+            true,
+            java.awt.event.MouseEvent.BUTTON3
+          )
+          listener.mouseReleased(release)
+          assert(snapshot(tree)(DependencyAnalyzerView.Companion.getDEPENDENCY.getName) == b)
+          val blank = new java.awt.event.MouseEvent(
+            tree,
+            java.awt.event.MouseEvent.MOUSE_PRESSED,
+            System.currentTimeMillis(),
+            0,
+            500,
+            350,
+            1,
+            true,
+            java.awt.event.MouseEvent.BUTTON3
+          )
+          listener.mousePressed(blank)
+          assert(tree.isSelectionEmpty)
+          assert(snapshot(tree)(DependencyAnalyzerView.Companion.getDEPENDENCY.getName) == null)
+        }
+        val model = new DefaultListModel[DependencyGroup]()
+        model.addElement(new DependencyGroup(java.util.List.of(a)))
+        model.addElement(new DependencyGroup(java.util.List.of(b)))
+        val list = new DependencyList(model, new AtomicProperty(false), new AtomicProperty(false))
+        list.setSelectedIndex(1)
+        assert(snapshot(list)(DependencyAnalyzerView.Companion.getDEPENDENCY.getName) == b)
+        list.clearSelection()
+        assert(snapshot(list)(DependencyAnalyzerView.Companion.getDEPENDENCY.getName) == null)
+      }
       check("removal targets one exact scope and keeps valid comma syntax") {
         val plan =
           DependencyEditPlan.prepare(project, declaration(source, first), new UnifiedCoordinates("g", "a", "1"), true)

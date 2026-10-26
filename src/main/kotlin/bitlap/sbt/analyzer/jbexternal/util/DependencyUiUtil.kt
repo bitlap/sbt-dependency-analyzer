@@ -121,8 +121,10 @@ internal abstract class AbstractDependencyList(
     }
 
     override fun uiDataSnapshot(sink: DataSink) {
-        sink[DependencyAnalyzerView.DEPENDENCY] = dependencyProperty.get()
-        sink[DependencyAnalyzerView.DEPENDENCIES] = dependencyGroupProperty.get()?.variances
+        val group = selectedValue
+        sink[DependencyAnalyzerView.DEPENDENCY] =
+            dependencyProperty.get()?.takeIf { it in (group?.variances ?: emptyList()) } ?: group?.dependency
+        sink[DependencyAnalyzerView.DEPENDENCIES] = group?.variances
     }
 
     init {
@@ -145,14 +147,27 @@ internal abstract class AbstractDependencyTree(
     }
 
     override fun uiDataSnapshot(sink: DataSink) {
-        sink[DependencyAnalyzerView.DEPENDENCY] = dependencyProperty.get()
-        sink[DependencyAnalyzerView.DEPENDENCIES] = dependencyGroupProperty.get()?.variances
+        val group = (lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? DependencyGroup
+        sink[DependencyAnalyzerView.DEPENDENCY] =
+            dependencyProperty.get()?.takeIf { it in (group?.variances ?: emptyList()) } ?: group?.dependency
+        sink[DependencyAnalyzerView.DEPENDENCIES] = group?.variances
     }
 
     init {
+        // Select before PopupHandler captures its data context on either Windows/Linux press or macOS release.
+        addMouseListener(object : java.awt.event.MouseAdapter() {
+            private fun selectRow(event: java.awt.event.MouseEvent) {
+                if (event.isPopupTrigger || javax.swing.SwingUtilities.isRightMouseButton(event)) {
+                    val path = getPathForLocation(event.x, event.y)
+                    if (path == null) clearSelection() else selectionPath = path
+                }
+            }
+            override fun mousePressed(event: java.awt.event.MouseEvent) = selectRow(event)
+            override fun mouseReleased(event: java.awt.event.MouseEvent) = selectRow(event)
+        })
         bind(dependencyGroupProperty)
         dependencyGroupProperty.bind(dependencyProperty.transform({ dependency ->
-            model.asSequence().map { it.userObject as DependencyGroup }
+            model.asSequence().mapNotNull { it.userObject as? DependencyGroup }
                 .find { it.data == dependency?.data && dependency.parent in it.parents }
         }, { it?.dependency }))
     }

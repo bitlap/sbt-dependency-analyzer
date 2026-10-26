@@ -8,13 +8,13 @@ import org.jetbrains.sbt.project.SbtProjectSystem
 import com.intellij.ide.util.PsiNavigationSupport
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.externalSystem.dependency.analyzer.*
-import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.project.DumbService
 import com.intellij.pom.Navigatable
 
-final class SbtDependencyAnalyzerGoToAction extends DependencyAnalyzerGoToAction(SbtProjectSystem.Id) {
+class SbtDependencyAnalyzerGoToAction extends DependencyAnalyzerGoToAction(SbtProjectSystem.Id) {
   getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.gotoAction.text"))
 
-  private def candidates(e: AnActionEvent): List[DependencyDeclaration] =
+  protected def candidates(e: AnActionEvent): List[DependencyDeclaration] =
     Option(SbtDependencyAnalyzerActionUtil.getModifiableDependency(e)).toList
       .flatMap(_.navigationDeclarations)
       .flatMap(d => Option(d.getDataContext.getData(DependencyDeclaration.Key)))
@@ -27,11 +27,21 @@ final class SbtDependencyAnalyzerGoToAction extends DependencyAnalyzerGoToAction
   }
 
   override def update(e: AnActionEvent): Unit = {
-    super.update(e)
-    e.getPresentation.setEnabled(candidates(e).nonEmpty)
+    // The platform action hides itself when getNavigatable returns null, including our chooser case.
+    val applicable = SbtDependencyAnalyzerActionUtil.isSbtDependency(e)
+    val indexing   = applicable && DumbService.isDumb(e.getProject)
+    val available  = applicable && !indexing && candidates(e).nonEmpty
+    e.getPresentation.setVisible(applicable)
+    e.getPresentation.setEnabled(available)
+    e.getPresentation.setDescription(
+      if (indexing) SbtDependencyAnalyzerBundle.message("analyzer.action.source.indexing")
+      else if (applicable && !available) SbtDependencyAnalyzerBundle.message("analyzer.action.source.unavailable")
+      else getTemplatePresentation.getDescription
+    )
   }
 
   override def actionPerformed(e: AnActionEvent): Unit = {
+    if (!SbtDependencyAnalyzerActionUtil.isSbtDependency(e) || DumbService.isDumb(e.getProject)) return
     val declarations = candidates(e)
     DeclarationChooser
       .choose(e.getProject, e.getPresentation.getText, declarations)

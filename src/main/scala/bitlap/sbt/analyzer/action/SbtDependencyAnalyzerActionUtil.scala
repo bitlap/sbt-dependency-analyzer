@@ -20,6 +20,12 @@ final case class ModifiableDependency(
 
 object SbtDependencyAnalyzerActionUtil {
 
+  def isSbtDependency(e: AnActionEvent): Boolean =
+    e.getProject != null && !e.getProject.isDisposed &&
+    e.getData(com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID) ==
+      org.jetbrains.sbt.project.SbtProjectSystem.Id &&
+      e.getData(DependencyAnalyzerView.Companion.getDEPENDENCY) != null
+
   def getModifiableDependency(e: AnActionEvent): ModifiableDependency =
     val project    = e.getProject
     val dependency = e.getData(DependencyAnalyzerView.Companion.getDEPENDENCY)

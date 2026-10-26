@@ -15,6 +15,17 @@ final class SbtDependencyAnalyzerExcludeAction extends BaseRefreshDependenciesAc
 
   override def update(e: AnActionEvent): Unit = {
     super.update(e)
+    val applicable = SbtDependencyAnalyzerActionUtil.isSbtDependency(e)
+    e.getPresentation.setVisible(applicable)
+    if (!applicable) {
+      e.getPresentation.setEnabled(false)
+      return
+    }
+    if (com.intellij.openapi.project.DumbService.isDumb(e.getProject)) {
+      e.getPresentation.setEnabled(false)
+      e.getPresentation.setDescription(SbtDependencyAnalyzerBundle.message("analyzer.action.source.indexing"))
+      return
+    }
     if (e.getPresentation.isEnabled) {
       val target = Option(SbtDependencyAnalyzerActionUtil.getModifiableDependency(e))
       e.getPresentation.setEnabled(
@@ -24,6 +35,8 @@ final class SbtDependencyAnalyzerExcludeAction extends BaseRefreshDependenciesAc
           )
         )
       )
+      if (!e.getPresentation.isEnabled)
+        e.getPresentation.setDescription(SbtDependencyAnalyzerBundle.message("analyzer.action.source.unavailable"))
       target.foreach { t =>
         val remove = getUnifiedCoordinates(t.parentDependency) == t.coordinates
         e.getPresentation.setText(
