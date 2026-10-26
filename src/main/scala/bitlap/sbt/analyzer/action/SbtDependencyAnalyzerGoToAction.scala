@@ -11,6 +11,9 @@ import com.intellij.openapi.externalSystem.dependency.analyzer.*
 import com.intellij.openapi.project.DumbService
 import com.intellij.pom.Navigatable
 
+/** Navigates to one declaration or opens a chooser when several match. For an sbt dependency the action stays visible
+ *  while indexing or when source is unavailable, with a disabled state.
+ */
 class SbtDependencyAnalyzerGoToAction extends DependencyAnalyzerGoToAction(SbtProjectSystem.Id) {
   getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.gotoAction.text"))
 

@@ -39,6 +39,10 @@ import com.intellij.openapi.project.Project
 
 import kotlin.jvm.functions
 
+/** Adapts imported sbt projects and scoped DOT graphs to the IDE dependency analyzer. Project selectors include the
+ *  build URI. Model generations prevent an invalidated load from repopulating scope caches; sbt queries are performed
+ *  by the background loading path.
+ */
 final class SbtDependencyAnalyzerContributor(project: Project) extends DependencyAnalyzerContributor {
 
   import SbtDependencyAnalyzerContributor.*

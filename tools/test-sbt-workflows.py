@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Verify scoped queries, RootProject references, DOT output and session cleanup using real sbt."""
+"""Exercise real sbt commands in generated multi-build fixtures under target/sbt-workflows.
+
+Cover qualified RootProject references, duplicate IDs, scoped queries, Runtime DOT output
+and preservation of user session settings. The fixture artifact is local; sbt/compiler
+bootstrap may still require network access. This does not exercise IDE project import."""
 import os
 import re
 from pathlib import Path

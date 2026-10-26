@@ -9,6 +9,9 @@ import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.diagnostic.{ ControlFlowException, Logger }
 import com.intellij.openapi.ui.Messages
 
+/** Previews removal of a direct dependency or exclusion of a transitive artifact from its direct declaration. Shared
+ *  definitions are not edited automatically; document changes invalidate a prepared preview.
+ */
 final class SbtDependencyAnalyzerExcludeAction extends BaseRefreshDependenciesAction {
   override lazy val eventText        = SbtDependencyAnalyzerBundle.message("analyzer.action.excludeAction.text")
   override lazy val eventDescription = SbtDependencyAnalyzerBundle.message("analyzer.action.excludeAction.description")

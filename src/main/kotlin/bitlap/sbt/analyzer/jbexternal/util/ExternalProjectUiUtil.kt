@@ -23,6 +23,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.Component
 import javax.swing.*
 
+/** Observable project selector with natural sorting and a searchable popup of imported projects. */
 internal class ExternalProjectSelector(
     property: ObservableMutableProperty<DependencyAnalyzerProject?>,
     externalProjects: List<DependencyAnalyzerProject>,

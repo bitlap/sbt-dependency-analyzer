@@ -6,7 +6,9 @@ import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyze
 import com.intellij.util.concurrency.AppExecutorUtil
 import javax.swing.SwingUtilities
 
-/** Coordinate identity is independent of optional, asynchronously calculated sizes. */
+/** Artifact identity based only on group, artifact and version; asynchronously computed sizes do not affect equality.
+ * Size getters return zero until computation finishes, which is also the value for a missing library.
+ */
 class SbtDAArtifact(
     private val project: com.intellij.openapi.project.Project,
     override val groupId: String,
@@ -20,6 +22,9 @@ class SbtDAArtifact(
     private val computing = java.util.concurrent.atomic.AtomicBoolean()
     val size: Long get() = computedSize ?: 0L
     val totalSize: Long get() = computedTotal ?: 0L
+    /** Schedules at most one size calculation at a time and invokes onReady on the EDT after success.
+     * Project disposal expires the read action; a failed calculation can be retried by a subsequent call.
+     */
     fun loadSize(onReady: () -> Unit) {
         if (computedTotal != null || !computing.compareAndSet(false, true)) return
         project.getService(ArtifactSizeLoader::class.java).execute {
@@ -37,6 +42,7 @@ class SbtDAArtifact(
     override fun toString() = "$groupId:$artifactId:$version"
 }
 
+/** Bounds concurrent JAR-size work to two workers and shuts the executor down with the project. */
 @com.intellij.openapi.components.Service(com.intellij.openapi.components.Service.Level.PROJECT)
 class ArtifactSizeLoader(private val project: com.intellij.openapi.project.Project) : com.intellij.openapi.Disposable {
     private val executor = AppExecutorUtil.createBoundedApplicationPoolExecutor("SbtDependencyAnalyzer.sizes", 2)

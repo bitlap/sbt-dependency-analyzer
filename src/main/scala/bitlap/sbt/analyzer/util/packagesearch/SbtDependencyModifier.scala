@@ -33,8 +33,11 @@ import com.intellij.openapi.module as OpenapiModule
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiManager
 
-// copy from https://github.com/JetBrains/intellij-scala/blob/idea242.x/scala/integration/packagesearch/src/org/jetbrains/plugins/scala/packagesearch/SbtDependencyModifier.scala
-// we have changed some
+// Adapted from https://github.com/JetBrains/intellij-scala/blob/idea242.x/scala/integration/packagesearch/src/org/jetbrains/plugins/scala/packagesearch/SbtDependencyModifier.scala
+/** Adapts sbt dependency and repository operations to the IDE package-search modification API. Uses legacy PSI helpers;
+ *  analyzer Remove/Exclude actions use DependencyEditPlan for reviewed edits. Adapted from JetBrains intellij-scala
+ *  SbtDependencyModifier (idea242.x).
+ */
 object SbtDependencyModifier extends ExternalDependencyModificator {
 
   private val logger = Logger.getInstance(this.getClass)
@@ -147,18 +150,9 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
     }
   }
 
-  /** * Support syntaxes: e.g.
-   *
-   *  [["x" % "y" % Versions.z withSources ()]]
-   *
-   *  [["x" %% "y" % Versions.z % Test]]
-   *
-   *  [["x" % "y" % z]]
-   *
-   *  [[libraryDependencies ++= Seq("x" % "y" % z)]]
-   *
-   *  @param module
-   *  @param toRemoveDependency
+  /** Removes a uniquely matched dependency using the legacy package-search PSI path. Supports argument-list entries and
+   *  += assignments; unresolved or unsupported targets fail explicitly. Analyzer menu edits use DependencyEditPlan
+   *  instead.
    */
   override def removeDependency(module: OpenapiModule.Module, toRemoveDependency: UnifiedDependency): Unit = {
     implicit val project: Project = module.getProject

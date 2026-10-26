@@ -5,6 +5,7 @@ import javax.swing.JComponent
 import com.intellij.openapi.options.*
 import com.intellij.openapi.project.Project
 
+/** Applies project settings and publishes changes so open analyzer views invalidate their cached models. */
 final class SbtDependencyAnalyzerConfigurable(project: Project) extends SearchableConfigurable.Parent.Abstract {
 
   private var currentPanel: SbtDependencyAnalyzerPanel = null

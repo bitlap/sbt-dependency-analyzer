@@ -7,11 +7,15 @@ import org.jetbrains.plugins.scala.lang.psi.api.statements.ScPatternDefinition
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 
-/** Reads coordinate operands, never strings collected from unrelated method arguments. References are followed on the
- *  current path only, so cycles stop and repeated uses remain distinct.
+/** Resolves coordinate operands and configuration wrappers from dependency PSI under read access. Follows supported
+ *  references without collecting strings from unrelated arguments; arbitrary Scala expressions are not evaluated.
+ *  Shared definitions remain navigable but may be marked non-editable.
  */
 object SbtDeclarationResolver {
 
+  /** Resolved coordinate with its source definition and use-site expression. The site carries wrappers and inherited
+   *  configuration; editable records whether rewriting that site is supported.
+   */
   final case class Entry(
     core: ScInfixExpr,
     site: ScExpression,
@@ -39,6 +43,7 @@ object SbtDeclarationResolver {
   )
   private val configurations = Set("Compile", "Test", "Runtime", "Provided", "Optional", "IntegrationTest")
 
+  /** Resolves a reference to the initializer of a single-binding pattern definition; other targets yield None. */
   def definition(ref: ScReferenceExpression): Option[ScExpression] =
     Option(ref.resolve()).flatMap { resolved =>
       Option(PsiTreeUtil.getParentOfType(resolved, classOf[ScPatternDefinition], false))
@@ -46,6 +51,9 @@ object SbtDeclarationResolver {
         .flatMap(_.expr)
     }
 
+  /** Resolves simple string literals, references, parentheses and supported string concatenation. Cycles or reference
+   *  paths exceeding 128 visited elements yield None.
+   */
   def string(expr: ScExpression, seen: Set[PsiElement] = Set.empty): Option[String] = {
     if (seen.contains(expr) || seen.size > 128) return None
     val next = seen + expr
@@ -60,6 +68,7 @@ object SbtDeclarationResolver {
     }
   }
 
+  /** Resolves literal scopes, standard configuration references, aliases and config/Configuration calls. */
   def configuration(expr: ScExpression, seen: Set[PsiElement] = Set.empty): Option[String] = {
     if (seen(expr) || seen.size > 128) return None
     string(expr).orElse(expr match {
@@ -127,6 +136,10 @@ object SbtDeclarationResolver {
     case other            => other
   }
 
+  /** Collects supported coordinate declarations, retaining use-site scope and editability. Collection aliases are
+   *  followed for navigation but marked non-editable; projectId limits explicit project-key owners. Requires read
+   *  access and checks IDE cancellation during traversal.
+   */
   def dependencies(expression: ScExpression, projectId: Option[String] = None): Seq[Entry] = {
     def loop(expr: ScExpression, seen: Set[PsiElement], editable: Boolean): Seq[Entry] = {
       com.intellij.openapi.progress.ProgressManager.checkCanceled()
@@ -164,12 +177,14 @@ object SbtDeclarationResolver {
     loop(expression, Set.empty, true).distinctBy(e => (e.site, e.core, e.scope))
   }
 
+  /** Flattens slash-scoped key operands in source order; other expressions remain a single operand. */
   def keyExpressions(expr: ScExpression): Seq[ScExpression] = expr match {
     case i: ScInfixExpr if Set("/", "in")(i.operation.refName) => keyExpressions(i.left) ++ keyExpressions(i.right)
     case p: ScParenthesisedExpr                                => p.innerElement.toSeq.flatMap(keyExpressions)
     case other                                                 => Seq(other)
   }
 
+  /** Recognizes libraryDependencies through slash scopes and the supported legacy in syntax. */
   def dependencyKey(expr: ScExpression): Boolean = expr match {
     case r: ScReferenceExpression                              => r.refName == "libraryDependencies"
     case i: ScInfixExpr if Set("/", "in")(i.operation.refName) => (

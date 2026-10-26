@@ -5,7 +5,10 @@ import bitlap.sbt.analyzer.util.SbtUtils
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 
-/** Only removes settings inserted by this action; existing user session settings remain intact. */
+/** Runs update with skip disabled and, where supported, a zero Coursier TTL. Snapshots existing session entries first
+ *  and removes only matching entries added by this invocation, in reverse index order. Cleanup runs in a non-cancelable
+ *  section and leaves pre-existing user settings intact.
+ */
 class RefreshSnapshotsTask extends SbtShellOutputAnalysisTask[Unit] {
   protected def commandOutput(project: Project, command: String): String = getCommandOutput(project, command)
 
@@ -14,6 +17,9 @@ class RefreshSnapshotsTask extends SbtShellOutputAnalysisTask[Unit] {
 
   override def executeCommand(project: Project): Unit = executeForModule(project, "")
 
+  /** Refreshes a local or build-qualified project; an empty selector uses the shell current project. Call through the
+   *  project task gate so another analyzer refresh cannot interleave temporary session edits.
+   */
   def executeForModule(project: Project, moduleId: String): Unit = {
     val prefix                      = if (moduleId.isEmpty) "" else s"$moduleId / "
     val settingScope                = bitlap.sbt.analyzer.util.SbtProjectReference.settingScope(moduleId)
@@ -44,6 +50,7 @@ class RefreshSnapshotsTask extends SbtShellOutputAnalysisTask[Unit] {
 object RefreshSnapshotsTask {
   private val Entry = """(?:\[info\]\s*)?(\d+)\.\s*(.*)""".r
 
+  /** Extracts numbered session entries, tolerating the optional sbt info prefix. */
   private[analyzer] def sessionSettings(output: String): Map[Int, String] = output.linesIterator
     .map(_.trim)
     .collect { case Entry(index, text) =>

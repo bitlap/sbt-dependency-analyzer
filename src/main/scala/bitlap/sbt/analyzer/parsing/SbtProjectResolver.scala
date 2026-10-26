@@ -9,10 +9,17 @@ import org.jetbrains.plugins.scala.lang.psi.api.statements.ScPatternDefinition
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 
-/** sbt IDs and source declarations are identities. IDE display names and directory names are not. */
+/** Matches supported project declarations by sbt project ID and selects their applicable settings. IDE display names
+ *  and directory names are not project identities; arbitrary runtime project construction is not evaluated.
+ */
 object SbtProjectResolver {
+
+  /** Statically recognized sbt IDs for a declaration, including conventional cross-project platform projections. */
   final case class Identity(ids: Set[String], cross: Boolean)
 
+  /** Resolves supported project constructors, aliases and receiver chains with cycle and depth guards. Returns None for
+   *  declarations whose ID cannot be determined statically.
+   */
   def identity(pattern: ScPatternDefinition, seen: Set[PsiElement] = Set.empty): Option[Identity] = {
     if (seen(pattern) || seen.size > 128) return None
     val names = pattern.bindings.map(_.name.stripPrefix("`").stripSuffix("`")).toSet
@@ -50,12 +57,17 @@ object SbtProjectResolver {
     pattern.expr.flatMap(loop)
   }
 
+  /** Returns top-level pattern definitions with a statically recognized sbt project identity. */
   def projects(file: ScalaFile): Seq[ScPatternDefinition] =
     file.getChildren.toSeq.collect { case p: ScPatternDefinition if identity(p).nonEmpty => p }
 
+  /** Checks the imported sbt ID against recognized declaration IDs, without consulting display names. */
   def matches(pattern: ScPatternDefinition, sbtId: String): Boolean =
     identity(pattern).exists(_.ids(sbtId))
 
+  /** Accepts unowned keys only for the local project file, ThisBuild keys for all projects, and explicit owners whose
+   *  declarations match sbtId. Configuration operands do not count as project owners.
+   */
   def appliesTo(key: ScExpression, sbtId: String, localFile: Boolean): Boolean = {
     val owners = SbtDeclarationResolver.keyExpressions(key).filter {
       case r: ScReferenceExpression =>
@@ -73,7 +85,9 @@ object SbtProjectResolver {
     }
   }
 
-  /** Follow the receiver chain, never aggregate/dependsOn arguments (which belong to other projects). */
+  /** Collects common and matching platform settings along the declaration receiver chain. Does not descend into
+   *  aggregate/dependsOn arguments, whose settings belong to other projects.
+   */
   def settings(pattern: ScPatternDefinition, platform: String): Seq[ScExpression] = {
     def loop(expr: ScExpression, seen: Set[PsiElement]): Seq[ScExpression] = {
       if (seen(expr) || seen.size > 128) return Nil

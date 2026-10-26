@@ -12,6 +12,7 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import com.intellij.openapi.externalSystem.model.project.dependencies.{ DependencyScopeNode, ProjectDependencyNode }
 
+/** Checks build-qualified selectors, shell inventory parsing and external-build artifact mapping. */
 class SbtProjectReferenceSpec extends AnyFunSuite {
   private val parent = SbtProjectReference("file:/analyzer-fixture/main/", "root")
   private val child  = SbtProjectReference("file:/analyzer-fixture/external%20build/", "root")

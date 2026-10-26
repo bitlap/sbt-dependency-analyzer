@@ -14,7 +14,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.psi.{ PsiDocumentManager, PsiWhiteSpace }
 
-/** Immutable reviewable edit. Revalidate the whole document before writing so a stale preview cannot overwrite edits.
+/** Immutable before/after document snapshot for a reviewed dependency edit. Applying the plan revalidates PSI and the
+ *  entire document before an undoable write, preventing a stale preview from overwriting intervening source changes.
  */
 final case class DependencyEditPlan(
   project: Project,
@@ -23,6 +24,7 @@ final case class DependencyEditPlan(
   after: String
 ) {
 
+  /** Applies the reviewed snapshot in one undoable write command after checking that the document is unchanged. */
   def apply(): Unit = {
     val (_, _, expression) =
       declaration.resolve.getOrElse(throw new IllegalStateException("Declaration changed; analyze again"))
@@ -48,6 +50,13 @@ final case class DependencyEditPlan(
 object DependencyEditPlan {
   private def quoted(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+  /** Builds an edit without modifying PSI or the document. Removal supports a += assignment or an argument-list element
+   *  and removes the adjacent comma when needed. Exclusion wraps the enclosing dependency expression. Shared, invalid
+   *  or read-only targets are rejected.
+   *
+   *  @param remove
+   *    true to remove the declaration; false to exclude selected from that declaration
+   */
   def prepare(
     project: Project,
     declaration: DependencyDeclaration,
@@ -100,6 +109,7 @@ object DependencyEditPlan {
     DependencyEditPlan(project, declaration, before, after)
   }
 
+  /** Creates read-only before/after views of the entire file for the prepared edit. */
   def previewComponent(plan: DependencyEditPlan): JComponent = {
     def editor(title: String, text: String): JPanel = {
       val area = new JTextArea(text, 25, 48)
@@ -123,6 +133,7 @@ object DependencyEditPlan {
     panel
   }
 
+  /** Shows the review dialog on the EDT and returns whether the user accepted; does not apply the plan. */
   def preview(plan: DependencyEditPlan, title: String): Boolean = {
     val dialog = new DialogWrapper(plan.project) {
       setTitle(title)

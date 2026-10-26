@@ -2,14 +2,21 @@ package bitlap.sbt.analyzer.action
 
 import bitlap.sbt.analyzer.util.DependencyUtils
 
+/** Matches declared coordinates to resolved artifacts while respecting scope and the original cross-version operator.
+ */
 object DeclarationMatcher {
 
-  /** Resolved/evicted versions may differ from requested versions; retain scope and artifact identity on fallback. */
+  /** Prefers exact matches; if none exist, retains identity matches so resolved or evicted version changes do not
+   *  prevent source navigation. The caller defines the scope and identity predicates.
+   */
   def select[A](declarations: List[A])(exact: A => Boolean, identity: A => Boolean): List[A] = {
     val preferred = declarations.filter(exact)
     if (preferred.nonEmpty) preferred else declarations.filter(identity)
   }
 
+  /** Compares group, requested version and intersecting configuration scopes. Only %% and %%% strip their corresponding
+   *  Scala/platform suffixes; literal % coordinates remain literal.
+   */
   def matches(
     group: String,
     artifact: String,

@@ -39,6 +39,9 @@ def getUnifiedCoordinates(data: DependencyAnalyzerDependency.Data.Module): Unifi
   UnifiedCoordinates(moduleData.getGroup, moduleData.getExternalName, moduleData.getVersion)
 }
 
+/** Walks toward the nearest module ancestor and returns its direct dependency child with the imported IDE module.
+ *  Returns null if no usable module ancestor exists.
+ */
 def getParentModule(
   project: Project,
   dependency: DependencyAnalyzerDependency
@@ -82,7 +85,9 @@ def findModule(project: Project, projectPath: String): Module = {
   findModule(project, moduleNode.getData)
 }
 
-/** Resolve the imported sbt project reference; display/qualified IDEA names are intentionally ignored. */
+/** Returns the imported build-qualified sbt selector, without inferring identity from display or directory names.
+ *  Throws if the module has no imported sbt identity.
+ */
 def sbtProjectSelector(project: Project, data: ModuleData): String = {
   val module = findModule(project, data)
   Option(module)
@@ -91,6 +96,9 @@ def sbtProjectSelector(project: Project, data: ModuleData): String = {
     .getOrElse(throw new IllegalArgumentException(s"No imported sbt project identity for ${data.getModuleName}"))
 }
 
+/** Pauses a polling worker after checking cancellation; interruption restores the thread flag and cancels the
+ *  operation.
+ */
 def waitInterval(sleep: Duration = Constants.INTERVAL_TIMEOUT): Unit = {
   com.intellij.openapi.progress.ProgressManager.checkCanceled()
   try Thread.sleep(sleep.toMillis)

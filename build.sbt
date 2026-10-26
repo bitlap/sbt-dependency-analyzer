@@ -15,7 +15,9 @@ lazy val jbAnnotVersion        = "26.0.2"
 // Override IDEA_BUILD to validate another IntelliJ platform explicitly.
 lazy val intellijVersion = sys.env.getOrElse("IDEA_BUILD", "261.25134.95")
 lazy val pluginVersion   = "0.11.0"
-lazy val psiTest         = taskKey[Unit]("Run isolated Scala PSI and menu regression tests")
+
+/** Runs real PSI and Swing checks in an isolated IDE process; results are written under target/smoke. */
+lazy val psiTest = taskKey[Unit]("Run isolated Scala PSI and menu regression tests")
 
 ThisBuild / version := pluginVersion
 
@@ -39,6 +41,7 @@ inThisBuild(
   )
 )
 
+/** Plugin build, including reproducible packaging and checks against the configured local IntelliJ SDK. */
 lazy val `sbt-dependency-analyzer` = (project in file("."))
   .enablePlugins(SbtIdeaPlugin)
   .settings(

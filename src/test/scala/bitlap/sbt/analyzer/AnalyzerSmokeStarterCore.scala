@@ -17,8 +17,7 @@ import com.intellij.openapi.externalSystem.dependency.analyzer.*
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 
-/** Additional workflows run inside the isolated IDE; sbt transport is replaced, production orchestration is retained.
- */
+/** IDE-runtime checks for structural declarations, project matching, reviewed edits and shell refresh cleanup. */
 object AnalyzerSmokeStarterCore {
 
   private[analyzer] def eventually(label: String)(ready: => Boolean): Unit = {

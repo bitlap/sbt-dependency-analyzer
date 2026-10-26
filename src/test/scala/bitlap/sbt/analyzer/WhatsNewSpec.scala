@@ -4,6 +4,7 @@ import bitlap.sbt.analyzer.activity.{ UpdatePagePolicy, WhatsNew }
 
 import org.scalatest.funsuite.AnyFunSuite
 
+/** Checks update eligibility and bundled release-note markup without opening an IDE editor. */
 class WhatsNewSpec extends AnyFunSuite {
 
   test("first install and upgrades open the page; repeated starts and downgrades do not") {

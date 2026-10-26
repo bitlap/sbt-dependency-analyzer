@@ -31,6 +31,7 @@ import javax.swing.tree.TreeModel
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency as Dependency
 
 
+/** Formats module or artifact display text, optionally including the artifact group ID. */
 internal fun Dependency.Data.getDisplayText(showGroupId: Boolean): @NlsSafe String = when (this) {
     is Dependency.Data.Module -> name
     is Dependency.Data.Artifact -> when (showGroupId) {
@@ -109,6 +110,7 @@ private fun htmlParagraph(text: @Nls String): @NlsSafe String {
     return "<p>\n$text\n</p>"
 }
 
+/** Publishes action data for the selected list group, preserving a bound dependency only if it belongs to that group. */
 internal abstract class AbstractDependencyList(
     model: ListModel<DependencyGroup>
 ) : JBList<DependencyGroup>(model), UiDataProvider {
@@ -135,6 +137,7 @@ internal abstract class AbstractDependencyList(
     }
 }
 
+/** Publishes selected tree-row data and selects the clicked row before a context menu captures its data context. */
 internal abstract class AbstractDependencyTree(
     model: TreeModel
 ) : SimpleTree(model), UiDataProvider {
@@ -173,6 +176,7 @@ internal abstract class AbstractDependencyTree(
     }
 }
 
+/** Dependency list with row-aware context menus and optional asynchronously loaded size labels. */
 internal open class DependencyList(
     model: ListModel<DependencyGroup>,
     showGroupIdProperty: ObservableProperty<Boolean>,
@@ -187,6 +191,7 @@ internal open class DependencyList(
     }
 }
 
+/** Dependency tree with the analyzer action group and shared artifact rendering. */
 internal open class DependencyTree(
     model: TreeModel,
     showGroupIdProperty: ObservableProperty<Boolean>,
@@ -200,6 +205,7 @@ internal open class DependencyTree(
     }
 }
 
+/** Usage paths with warning rendering and automatic expansion after model changes. */
 internal open class UsagesTree(
     model: TreeModel,
     showGroupIdProperty: ObservableProperty<Boolean>,
@@ -260,6 +266,9 @@ private class UsagesTreeRenderer(
     }
 }
 
+/** Non-empty group of dependency occurrences sharing display identity.
+ * Uses a non-omitted occurrence as its representative when possible and aggregates scopes, parents and warnings.
+ */
 internal class DependencyGroup(val variances: List<Dependency>) {
     val dependency by lazy { variances.find { !it.isOmitted } ?: variances.first() }
     val data by lazy { dependency.data }

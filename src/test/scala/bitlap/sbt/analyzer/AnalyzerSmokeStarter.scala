@@ -19,7 +19,10 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.psi.{ PsiDocumentManager, PsiFileFactory }
 import com.intellij.psi.util.PsiTreeUtil
 
-/** Loaded only by the separate smoke-test plugin, never shipped in the production plugin. */
+/** Test-only IDE entry point that opens an isolated fixture, runs PSI and Swing checks, and records results under
+ *  target. This validates real IDE components without claiming a full manual import or Marketplace installation
+ *  workflow.
+ */
 class AnalyzerSmokeStarter extends ApplicationStarter {
 
   override def main(args: JList[String]): Unit = {

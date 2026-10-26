@@ -14,12 +14,16 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Conditions
 
+/** Builds bundled release-note HTML and opens it in an IDE editor, with a browser fallback for manual requests. */
 object WhatsNew {
   private lazy val Log     = Logger.getInstance(getClass)
   private val ReleaseNotes = "https://github.com/bitlap/sbt-dependency-analyzer/releases/tag/v"
 
   def getReleaseNotes(version: Version): String = ReleaseNotes + version.presentation
 
+  /** Uses the latest bundled change-note section as HTML, escaping the title and release URL. The bundled note body is
+   *  trusted plugin markup and is not HTML-escaped.
+   */
   private[analyzer] def pageHtml(title: String, notes: String, url: String): String = {
     def escape(text: String): String = text
       .replace("&", "&amp;")
@@ -35,7 +39,9 @@ object WhatsNew {
        |<p><a href="${escape(url)}">${escape(url)}</a></p></body></html>""".stripMargin
   }
 
-  /** Returns only after the IDE has created the editor; remote page loading is not a success signal. */
+  /** Returns true only when FileEditorManager creates an editor for the bundled page. Call on the EDT. Disposed
+   *  projects and recoverable editor failures return false; cancellation propagates.
+   */
   private[analyzer] def openPage(version: Version, project: Project): Boolean = {
     if (project.isDisposed) return false
     val title = SbtDependencyAnalyzerBundle.message("analyzer.action.whatsNew.text", "Sbt Dependency Analyzer")
@@ -50,6 +56,9 @@ object WhatsNew {
     }
   }
 
+  /** Schedules the bundled editor for a project and acknowledges successful opening. With no project, or after an
+   *  editor failure, opens the release URL in the browser.
+   */
   def browse(version: Version, project: Project): Unit = {
     if (project == null) BrowserUtil.browse(getReleaseNotes(version))
     else

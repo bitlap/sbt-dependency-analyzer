@@ -29,6 +29,7 @@ import org.jetbrains.annotations.Nls
 import java.awt.Component
 import javax.swing.*
 
+/** Observable scope selector whose popup supports individual and grouped scope selection. */
 internal class SearchScopeSelector(property: ObservableMutableProperty<List<ScopeItem>>) : JPanel() {
 
     init {
@@ -243,6 +244,7 @@ private class SearchScopeDropDownLink(
     }
 }
 
+/** A scope option with its external project and current selection state. */
 internal class ScopeItem(
     val scope: Scope, val isSelected: Boolean
 ) {

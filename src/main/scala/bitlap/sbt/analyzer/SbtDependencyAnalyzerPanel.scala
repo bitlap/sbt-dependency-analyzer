@@ -6,7 +6,7 @@ import javax.swing.*
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.Project
 
-/** Labels use the plugin bundle; layout follows font and UI scaling instead of fixed pixel sizes. */
+/** Builds the settings form with localized labels and layout that follows IDE font and UI scaling. */
 final class SbtDependencyAnalyzerPanel(project: Project) {
   private val settings    = SettingsState.getSettings(project)
   val organization        = new JTextField(28)

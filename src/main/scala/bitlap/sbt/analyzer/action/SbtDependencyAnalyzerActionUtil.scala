@@ -9,6 +9,10 @@ import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.externalSystem.dependency.analyzer.*
 import com.intellij.openapi.module.Module as OpenapiModule
 
+/** Source context for a selected analyzer node. Navigation candidates describe the selected artifact; edit candidates
+ *  describe its direct dependency ancestor. A single unambiguous declaration is also exposed separately for callers
+ *  that require it.
+ */
 final case class ModifiableDependency(
   module: OpenapiModule,
   coordinates: UnifiedCoordinates,
@@ -18,6 +22,8 @@ final case class ModifiableDependency(
   navigationDeclarations: List[DeclaredDependency]
 )
 
+/** Resolves analyzer selection data to imported modules and matching declarations without guessing an ambiguous target.
+ */
 object SbtDependencyAnalyzerActionUtil {
 
   def isSbtDependency(e: AnActionEvent): Boolean =
@@ -26,6 +32,10 @@ object SbtDependencyAnalyzerActionUtil {
       org.jetbrains.sbt.project.SbtProjectSystem.Id &&
       e.getData(DependencyAnalyzerView.Companion.getDEPENDENCY) != null
 
+  /** Resolves the selected artifact and its direct ancestor declarations under read access. Returns null when
+   *  selection, module identity or smart-mode PSI resolution is unavailable; ambiguity is retained in the candidate
+   *  lists for the caller to present.
+   */
   def getModifiableDependency(e: AnActionEvent): ModifiableDependency =
     val project    = e.getProject
     val dependency = e.getData(DependencyAnalyzerView.Companion.getDEPENDENCY)

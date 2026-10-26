@@ -8,6 +8,7 @@ import guru.nidi.graphviz.attribute.validate.ValidatorEngine
 import guru.nidi.graphviz.model.MutableGraph
 import guru.nidi.graphviz.parse.Parser
 
+/** Graphviz parsing bridge used when the fast sbt DOT reader encounters unsupported graph constructs. */
 object DotUtils {
 
   def parseAsGraph(context: AnalyzerContext): MutableGraph = {

@@ -13,7 +13,7 @@ import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.model.project.dependencies.DependencyScopeNode
 import com.intellij.openapi.project.Project
 
-/** Handles the `sbt dependencyDot` command. Upon completion, parses the resulting file content via a callback. */
+/** Generates or reuses the selected project/scope DOT file, then builds analyzer nodes with imported identity maps. */
 final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
 
   override val dependencyGraphType: DependencyGraphType = DependencyGraphType.Dot

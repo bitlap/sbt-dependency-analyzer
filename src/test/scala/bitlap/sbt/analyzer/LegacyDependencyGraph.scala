@@ -2,6 +2,7 @@ package bitlap.sbt.analyzer.parsing;
 
 import scala.collection.mutable.ListBuffer
 
+/** Test-only recursive graph implementation retained as the performance comparison baseline. */
 final class LegacyDependencyGraph(size: Int) {
 
   private val graph = Array.fill(size)(ListBuffer[Int]())

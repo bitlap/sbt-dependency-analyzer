@@ -13,6 +13,9 @@ import com.intellij.openapi.application.{ ApplicationManager, ModalityState }
 import com.intellij.openapi.project.{ Project, ProjectManager }
 import com.intellij.openapi.util.Conditions
 
+/** Decides whether a version needs release notes: first install and upgrades qualify, repeated versions and downgrades
+ *  do not. Unparseable version changes are treated as eligible.
+ */
 private[analyzer] object UpdatePagePolicy {
 
   def shouldShow(current: String, previous: String): Boolean =
@@ -20,6 +23,9 @@ private[analyzer] object UpdatePagePolicy {
     (previous == null || previous.isEmpty || Try(Version(current) > Version(previous)).getOrElse(true))
 }
 
+/** Schedules release notes on the EDT and acknowledges a version only after its editor opens successfully.
+ *  Application-level persistence prevents duplicate pages across projects; failed opens retain a notification fallback.
+ */
 object PluginUpdateActivity {
   // The legacy .version key only meant a notification was sent, not that the page opened.
   private[analyzer] val VersionProperty = s"${SbtDependencyAnalyzerPlugin.PLUGIN_ID}.whatsNewVersion"
@@ -58,11 +64,12 @@ object PluginUpdateActivity {
   }
 }
 
+/** Schedules the update-page check when a project opens. */
 final class PluginUpdateActivity extends BaseProjectActivity {
   override def onRunActivity(project: Project): Unit = PluginUpdateActivity.schedule(project)
 }
 
-/** Dynamic installation can happen after all open projects have already run their startup activities. */
+/** Schedules update-page checks in already-open projects after this plugin is installed or loaded dynamically. */
 final class PluginInstallListener extends DynamicPluginListener {
 
   override def pluginLoaded(plugin: IdeaPluginDescriptor): Unit =

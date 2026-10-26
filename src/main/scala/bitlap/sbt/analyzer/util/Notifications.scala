@@ -23,8 +23,7 @@ import com.intellij.openapi.fileEditor.*
 import com.intellij.openapi.project.{ DumbAwareAction, Project }
 import com.intellij.openapi.vfs.{ VfsUtil, VirtualFile }
 
-/** SbtDependencyAnalyzer global notifier
- */
+/** Creates analyzer notifications and their settings, reimport and release-note actions. */
 object Notifications {
 
   private lazy val NotificationGroup =
@@ -185,7 +184,8 @@ object Notifications {
 
   }
 
-  /** notify information when update plugin
+  /** Offers a release-note action when automatic opening failed; opening the notification does not acknowledge the
+   *  version.
    */
   def notifyUpdateActivity(project: Project, version: Version, title: String, content: String): Unit = {
     val notification = NotificationGroup

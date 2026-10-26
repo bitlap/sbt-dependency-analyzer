@@ -24,6 +24,7 @@ import com.intellij.openapi.module.Module as OpenapiModule
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
 
+/** Converts parsed artifact nodes to analyzer nodes and matches them against imported sbt project metadata. */
 object DependencyUtils {
 
   final val DEFAULT_CONFIGURATION = toDAScope("default")
@@ -45,10 +46,7 @@ object DependencyUtils {
     else AnalyzerCacheService.getInstance(module.getProject).declarations.getDeclaredDependencyWithCache(module)
   }
 
-  /** Handles the processing of ProjectDependencyNodeImpl objects by converting them to a unified DependencyNode type
-   *  and applying filtering logic, which is critical for dependency graph/tree operations as this node serves as the
-   *  root of the structure.
-   */
+  /** Recognizes the current project coordinate using its effective organization and mapped moduleName. */
   def isSelfNode(dn: DependencyNode, context: AnalyzerContext): Boolean = {
     dn.getDisplayName match
       case SBT_ARTIFACT_REGEX(group, artifact, _) =>
@@ -65,7 +63,7 @@ object DependencyUtils {
 
   def toDAScope(name: String): DAScope = DAScope(name, StringUtil.toTitleCase(name))
 
-  /** Skip analysis for this module */
+  /** Excludes absent/disposed modules, build-definition modules and shared-source modules from analysis. */
   def canIgnoreModule(module: OpenapiModule): Boolean = {
     // if module is itself a build module, skip build module
     if (module == null || module.isDisposed) return true
@@ -73,6 +71,7 @@ object DependencyUtils {
     isBuildModule || module.isSharedSourceModule
   }
 
+  /** Builds a task key from a project selector and configuration; an empty selector uses the shell current project. */
   def getScopedCommandKey(project: String, scope: DependencyScopeEnum, cmd: String): String = {
     if (project == null || project.isEmpty) s"$scope / $cmd"
     else s"$project / $scope / $cmd"
@@ -93,6 +92,9 @@ object DependencyUtils {
     node
   }
 
+  /** Attaches children and replaces recognized project-artifact nodes with imported project nodes. Matching currently
+   *  uses the context organization; unmatched coordinates remain artifacts.
+   */
   def appendChildrenAndFixProjectNodes[N <: DependencyNode](
     parentNode: N,
     nodes: Seq[DependencyNode],
@@ -142,6 +144,7 @@ object DependencyUtils {
     }
   }
 
+  /** Removes a recognized Scala/JVM, Scala.js or Scala Native suffix; leaves other artifact names intact. */
   def getArtifactWithoutScalaVersion(artifact: String): String = {
     artifact match
       case SCALA_VERSION_PATTERN(module) => module
@@ -188,6 +191,7 @@ object DependencyUtils {
 
   }
 
+  /** Matches a source project declaration against the imported sbt ID, independently of its moduleName setting. */
   def containsModuleName(proj: ScPatternDefinition, module: OpenapiModule): Boolean =
     SSbtUtil.getSbtProjectUriAndId(module).exists { identity =>
       bitlap.sbt.analyzer.parsing.SbtProjectResolver.matches(proj, identity.id)

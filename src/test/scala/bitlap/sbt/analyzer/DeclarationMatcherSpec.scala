@@ -5,6 +5,7 @@ import bitlap.sbt.analyzer.util.DependencyUtils
 
 import org.scalatest.funsuite.AnyFunSuite
 
+/** Checks coordinate matching across scopes, resolved versions and literal/Scala/platform artifact operators. */
 class DeclarationMatcherSpec extends AnyFunSuite {
 
   private def matches(

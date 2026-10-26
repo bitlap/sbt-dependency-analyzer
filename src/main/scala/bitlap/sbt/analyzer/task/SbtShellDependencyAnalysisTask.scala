@@ -18,8 +18,9 @@ import model.*
 import parsing.*
 import util.DependencyUtils.*
 
-/** Handles SBT tasks that require the `addDependencyTreePlugin` to be enabled, which provides dependency tree and
- *  analysis capabilities.
+/** Runs file-producing dependency tasks against the imported sbt project and configuration. Reuses a fresh output file
+ *  within the configured TTL; otherwise invalidates the parsed cache, waits for shell completion and invokes the
+ *  parser. Shell work must run outside the EDT.
  */
 trait SbtShellDependencyAnalysisTask:
 

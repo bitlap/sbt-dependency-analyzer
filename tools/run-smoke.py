@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Run the test-only app starter in an isolated IntelliJ runtime and render real Swing components."""
+"""Run test-only checks in an isolated IntelliJ process using IDE_HOME and compiled test classes.
+
+Build a temporary starter plugin and render real Swing components in headless mode.
+Configuration, logs and results stay under target/smoke; this is not a manual IDE import test."""
 import json
 import os
 import re

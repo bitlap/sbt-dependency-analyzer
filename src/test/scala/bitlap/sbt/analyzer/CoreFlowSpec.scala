@@ -11,6 +11,7 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import com.intellij.openapi.externalSystem.model.project.dependencies.{ DependencyNode, DependencyScopeNode }
 
+/** Checks Graphviz fallback, generated dependency paths and cache invalidation after file deletion or replacement. */
 class CoreFlowSpec extends AnyFunSuite {
 
   private def parse(text: String)(check: DependencyScopeNode => Unit): Unit = {

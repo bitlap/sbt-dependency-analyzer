@@ -6,6 +6,9 @@ import bitlap.sbt.analyzer.util.SbtReimportProject
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 
+/** Refreshes the selected sbt project with temporary resolver settings and publishes an analyzer refresh event. Without
+ *  an imported selection, update uses the active shell current project.
+ */
 final class SbtRefreshSnapshotDependenciesAction extends BaseRefreshDependenciesAction:
 
   override lazy val eventText: String =

@@ -35,8 +35,11 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.*
 
-// copy from https://github.com/JetBrains/intellij-scala/blob/idea242.x/sbt/sbt-impl/src/org/jetbrains/sbt/language/utils/SbtDependencyUtils.scala
-// we have changed some
+// Adapted from https://github.com/JetBrains/intellij-scala/blob/idea242.x/sbt/sbt-impl/src/org/jetbrains/sbt/language/utils/SbtDependencyUtils.scala
+/** Source discovery and PSI editing helpers for sbt dependencies and repositories. Analyzer declarations use the
+ *  structural resolver; older package-search operations retain their tuple-based API. PSI reads require read access and
+ *  mutations are performed through write commands.
+ */
 object SbtDependencyUtils {
   val LIBRARY_DEPENDENCIES: String = "libraryDependencies"
   val SETTINGS: String             = "settings"
@@ -180,6 +183,9 @@ object SbtDependencyUtils {
     )
   }
 
+  /** Finds one legacy dependency tuple matching the requested coordinates and optional version/scope constraints.
+   *  Returns null when absent and throws on multiple matches; analyzer actions provide their own declaration chooser.
+   */
   def findLibraryDependency(
     project: Project,
     module: OpenapiModule,
@@ -241,6 +247,7 @@ object SbtDependencyUtils {
     }
   }
 
+  /** Collects top-level and project-specific legacy dependency/place tuples for the imported sbt ID. */
   def getLibraryDependenciesOrPlacesUtil(
     module: OpenapiModule,
     psiSbtFile: ScalaFile,
@@ -263,6 +270,9 @@ object SbtDependencyUtils {
     res.distinct
   }
 
+  /** Looks up the optional build file and collects legacy tuples within a read action; missing files yield an empty
+   *  sequence.
+   */
   def getLibraryDependenciesOrPlaces(
     sbtFileOpt: Option[VirtualFile],
     project: Project,
@@ -280,7 +290,9 @@ object SbtDependencyUtils {
     libDeps.getOrElse(Seq.empty)
   }
 
-  /** It may be necessary to exchange the positions of version and artifact in order to generate dependent coordinates.
+  /** Collects literal/configuration leaves from a supported legacy expression and appends inherited scope. With
+   *  preserve enabled returns PSI leaves instead of cleaned text. This is a traversal-based compatibility API, not a
+   *  guaranteed group/artifact/version tuple for arbitrary expressions.
    */
   def processLibraryDependencyFromExprAndString(
     elem: (ScExpression, String, ScExpression),
@@ -360,16 +372,14 @@ object SbtDependencyUtils {
     result
   }
 
-  /** Parse Library Dependencies or Places from PsiElement
+  /** Collects legacy dependency expressions or candidate insertion places from supported PSI.
    *
    *  @param psi
-   *    psiElement need passing
+   *    root expression to traverse under read access
    *  @param mode
-   *    whether you want the library dependencies or places to add dependencies from the PsiElement
+   *    GetDep collects dependencies; GetPlace collects supported insertion locations
    *  @return
-   *    A sequence of tuple (PsiElement, String, PsiElement) where the first element is the PsiElement of the library
-   *    dependencies/places the second element is the configuration string (Lib mode) the third element is the parent
-   *    PsiElement that contains library dependency and its configuration (Lib mode)
+   *    tuples of dependency/place PSI, inherited configuration text, and its enclosing expression
    */
   def getLibraryDependenciesOrPlacesFromPsi(psi: PsiElement, mode: GetMode): Seq[(PsiElement, String, PsiElement)] = {
     var result: Seq[(PsiElement, String, PsiElement)] = List()
@@ -474,6 +484,7 @@ object SbtDependencyUtils {
     result
   }
 
+  /** Collects settings expressions from a supported project definition for legacy dependency/place discovery. */
   def getPossiblePsiFromProjectDefinition(proj: ScPatternDefinition): Seq[PsiElement] = {
     var res: Seq[PsiElement] = List()
 
@@ -507,6 +518,7 @@ object SbtDependencyUtils {
     res
   }
 
+  /** Finds top-level definitions whose inferred type is a supported sbt Project or cross-project type. */
   def getTopLevelSbtProjects(psiSbtFile: ScalaFile): Seq[ScPatternDefinition] = {
     var res: Seq[ScPatternDefinition] = List()
 
@@ -530,6 +542,7 @@ object SbtDependencyUtils {
     res
   }
 
+  /** Finds top-level libraryDependencies assignments outside explicit project definitions. */
   def getTopLevelLibraryDependencies(psiSbtFile: ScalaFile): Seq[ScInfixExpr] = {
     var res: Seq[ScInfixExpr] = List()
 
@@ -544,6 +557,7 @@ object SbtDependencyUtils {
     res
   }
 
+  /** Creates a file-level insertion candidate; callers decide whether it belongs to the selected project. */
   def getTopLevelPlaceToAdd(psiFile: ScalaFile)(implicit project: Project): Option[DependencyOrRepositoryPlaceInfo] = {
     val line: Int = StringUtil.offsetToLineNumber(psiFile.charSequence, psiFile.getTextLength) + 1
     getRelativePath(psiFile).map { relpath =>
@@ -551,6 +565,7 @@ object SbtDependencyUtils {
     }
   }
 
+  /** Dispatches dependency insertion to supported assignment, collection, settings-call or file containers. */
   def addDependency(expr: PsiElement, info: SbtArtifactInfo)(implicit project: Project): Option[PsiElement] = {
     expr match {
       case e: ScInfixExpr if e.left.textMatches(LIBRARY_DEPENDENCIES) => addDependencyToLibraryDependencies(e, info)
@@ -569,6 +584,7 @@ object SbtDependencyUtils {
     }
   }
 
+  /** Appends a repository to the containing build file when available. */
   def addRepository(expr: PsiElement, unifiedDependencyRepository: UnifiedDependencyRepository)(implicit
     project: Project
   ): Option[PsiElement] = {
@@ -579,6 +595,8 @@ object SbtDependencyUtils {
     }
   }
 
+  /** Extends supported libraryDependencies assignments, preserving the distinction between single and sequence values.
+   */
   def addDependencyToLibraryDependencies(infix: ScInfixExpr, info: SbtArtifactInfo)(implicit
     project: Project
   ): Option[PsiElement] = {
@@ -628,6 +646,7 @@ object SbtDependencyUtils {
     }
   }
 
+  /** Appends a generated dependency argument to a supported collection call in a write command. */
   def addDependencyToSeq(seqCall: ScMethodCall, info: SbtArtifactInfo)(implicit
     project: Project
   ): Option[PsiElement] = {
@@ -639,6 +658,7 @@ object SbtDependencyUtils {
     Some(addedExpr)
   }
 
+  /** Inserts into a supported typed collection expression; unsupported shapes yield None. */
   def addDependencyToTypedSeq(typedSeq: ScTypedExpression, info: SbtArtifactInfo): Option[PsiElement] =
     typedSeq.expr match {
       case seqCall: ScMethodCall =>
@@ -653,6 +673,7 @@ object SbtDependencyUtils {
       case _ => None
     }
 
+  /** Appends a new libraryDependencies += statement to the build file in a write command. */
   def addDependencyToFile(file: PsiFile, info: SbtArtifactInfo)(implicit project: Project): PsiElement = {
     var addedExpr: PsiElement = null
     doInSbtWriteCommandAction(
@@ -665,6 +686,7 @@ object SbtDependencyUtils {
     addedExpr
   }
 
+  /** Appends a generated libraryDependencies += argument to a settings call. */
   def addDependencyToSettings(settings: ScMethodCall, info: SbtArtifactInfo): PsiElement = {
     val addedExpr = generateLibraryDependency(info, settings)
     doInSbtWriteCommandAction(
@@ -722,6 +744,9 @@ object SbtDependencyUtils {
   def generateArtifactText(info: SbtArtifactInfo): String =
     generateArtifactTextVerbose(info.groupId, info.artifactId, info.version, info.configuration)
 
+  /** Builds a legacy quoted coordinate expression with optional configuration. A trailing numeric artifact suffix is
+   *  converted to %% syntax; this is not a general cross-version evaluator.
+   */
   def generateArtifactTextVerbose(
     groupId: String,
     artifactId: String,
@@ -776,6 +801,7 @@ object SbtDependencyUtils {
     }
   }
 
+  /** Finds build.sbt beside a build-definition content root, then build.sbt or another .sbt file inside a root. */
   def getSbtFileFromBuildModule(buildModule: OpenapiModule): Option[VirtualFile] = {
     val buildSbt = ModuleRootManager
       .getInstance(buildModule)
@@ -792,7 +818,7 @@ object SbtDependencyUtils {
       .orElse(otherSbtFiles.headOption)
   }
 
-  /** Find the corresponding sbt build module for a sbt module */
+  /** Finds the imported build-definition module whose build URI matches the selected sbt module. */
   def getBuildModule(module: OpenapiModule): Option[OpenapiModule] = {
     val project       = module.getProject
     val moduleManager = ModuleManager.getInstance(project)
@@ -805,12 +831,17 @@ object SbtDependencyUtils {
     buildModules.headOption // we only expect zero or one here
   }
 
+  /** Finds an sbt file through the matching build-definition module, falling back to the supplied module content roots.
+   */
   def getSbtFileOpt(module: OpenapiModule): Option[VirtualFile] =
     getBuildModule(module)
       .flatMap(getSbtFileFromBuildModule)
       .orElse(getSbtFileFromBuildModule(module)) // if module is itself a build module
 
-  /** Resolve source declarations for the imported sbt identity, retaining use sites separately from definitions. */
+  /** Resolves declarations for the imported sbt identity under read access, retaining use-site scopes and definitions.
+   *  Shared or computed containers may remain navigable without being editable. Recoverable resolution failures return
+   *  an empty list; IDE control-flow exceptions propagate.
+   */
   def declaredDependencies(module: OpenapiModule): java.util.List[DeclaredDependency] = try {
     inReadAction {
       val platform = if (module.isScalaJs) "js" else if (module.isScalaNative) "native" else "jvm"

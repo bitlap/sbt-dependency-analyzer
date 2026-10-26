@@ -17,7 +17,9 @@ import com.intellij.openapi.externalSystem.model.task.*
 import com.intellij.openapi.externalSystem.service.notification.ExternalSystemProgressNotificationManager
 import com.intellij.openapi.project.Project
 
-/** Lives longer than analyzer editors, so reimports also invalidate files while the view is closed. */
+/** Owns parsed graphs, declaration and JAR-size caches for the lifetime of an IDE project. An sbt reimport clears
+ *  cached data and deletes tracked graph outputs even when no analyzer editor is open.
+ */
 @Service(Array(Service.Level.PROJECT))
 final class AnalyzerCacheService(project: Project) extends Disposable {
   val librarySizes              = new ConcurrentHashMap[String, java.lang.Long]()
@@ -25,6 +27,7 @@ final class AnalyzerCacheService(project: Project) extends Disposable {
   val declarations              = new DependencyDeclarationCache()
   private val reimportListeners = new java.util.concurrent.CopyOnWriteArrayList[Runnable]()
 
+  /** Registers a model invalidation callback and removes it when parent is disposed. */
   def whenReimported(parent: Disposable, listener: Runnable): Unit = {
     reimportListeners.add(listener)
     com.intellij.openapi.util.Disposer.register(
@@ -34,10 +37,15 @@ final class AnalyzerCacheService(project: Project) extends Disposable {
       }
     )
   }
-  private val analysisFiles                 = ConcurrentHashMap.newKeySet[String]()
+  private val analysisFiles = ConcurrentHashMap.newKeySet[String]()
+
+  /** Records an output path for deletion after reimport; registration itself does not read or create the file. */
   def trackAnalysisFile(path: String): Unit = { analysisFiles.add(path); () }
+
+  /** Clears in-memory caches without deleting generated analysis files. */
   def clear(): Unit = { librarySizes.clear(); dotFiles.clearAllCache(); declarations.clearAllCache() }
 
+  /** Clears caches and attempts to delete every tracked output, logging individual I/O failures. */
   def invalidateAnalysisFiles(): Unit = {
     clear()
     analysisFiles.asScala.foreach { file =>

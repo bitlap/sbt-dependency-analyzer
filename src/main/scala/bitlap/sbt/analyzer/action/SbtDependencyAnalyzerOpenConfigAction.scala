@@ -17,6 +17,9 @@ import com.intellij.openapi.externalSystem.service.settings.ExternalSystemConfig
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 
+/** Opens the sbt build configuration for the selected dependency module. Falls back to the first linked sbt build when
+ *  the selected module has no locatable configuration file.
+ */
 final class SbtDependencyAnalyzerOpenConfigAction
     extends ExternalSystemDependencyAnalyzerOpenConfigAction(SbtProjectSystem.Id):
 

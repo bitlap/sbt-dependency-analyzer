@@ -97,8 +97,10 @@ import kotlin.collections.sortedWith
 import kotlin.collections.toSet
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency as Dependency
 
-/**
- * https://github.com/JetBrains/intellij-community/blob/idea/253.20558.43/platform/external-system-impl/src/com/intellij/openapi/externalSystem/dependency/analyzer/DependencyAnalyzerViewImpl.kt
+/** Coordinates project loading, dependency filtering and usage trees for the analyzer editor.
+ * Loads and tree construction run on a single worker; UI changes return to the EDT. Independent revision
+ * counters discard stale model, filter and usage results after selection changes or disposal.
+ * Adapted from JetBrains intellij-community DependencyAnalyzerViewImpl (idea/253.20558.43).
  */
 class DependencyAnalyzerViewImpl(
     private val project: Project, private val systemId: ProjectSystemId, private val parentDisposable: Disposable
@@ -199,6 +201,7 @@ class DependencyAnalyzerViewImpl(
         return externalProjects.find(predicate)
     }
 
+    /** Invalidates pending model/filter/usage results before scheduling a fresh project inventory. */
     private fun updateViewModel() {
         modelRevision.incrementAndGet()
         filterRevision.incrementAndGet()
@@ -264,12 +267,14 @@ class DependencyAnalyzerViewImpl(
         }, onUiThread = { groups -> dependencyModel = groups })
     }
 
+    /** Debounces filter changes on the EDT; each change invalidates the previous filter result. */
     private fun updateFilteredDependencyModel() {
         if (disposed) return
         filterRevision.incrementAndGet()
         filterTimer.restart()
     }
 
+    /** Captures UI filter inputs and computes a detached tree on the worker, applying only the latest revision. */
     private fun rebuildFilteredModel() {
         if (disposed) return
         val revision = filterRevision.get()
@@ -313,6 +318,7 @@ class DependencyAnalyzerViewImpl(
         )
     }
 
+    /** Builds usages from a snapshot of the selected coordinate and applies the result only if still current. */
     private fun updateUsagesModel() {
         if (disposed) return
         val revision = usagesRevision.incrementAndGet()
@@ -328,6 +334,9 @@ class DependencyAnalyzerViewImpl(
         }
     }
 
+    /** Runs a model load on the worker and completes its loading trace on the EDT, even on failure.
+     * Only current results are applied; non-cancellation failures expose a retry notification.
+     */
     private fun <R> executeLoadingTask(onBackgroundThread: () -> R, onUiThread: (R) -> Unit) {
         if (disposed) return
         val revision = modelRevision.get()
@@ -364,6 +373,9 @@ class DependencyAnalyzerViewImpl(
         }
     }
 
+    /** Groups dependencies with their ancestor paths into a detached Swing tree.
+     * Returns null for empty input or when the grouped dependencies have no unique root.
+     */
     private fun buildTree(dependencies: Iterable<Dependency>, groupId: Boolean = showDependencyGroupId): DefaultMutableTreeNode? {
         val dependenciesForTree = dependencies.collectAllDependencies()
 
@@ -431,6 +443,7 @@ class DependencyAnalyzerViewImpl(
         )
     ).groupBy { it.data.getGroup() }.map { DependencyGroup(it.value) }
 
+    /** Creates the editor UI and attaches its listeners and worker cleanup to the parent disposable. */
     fun createComponent(): JComponent {
         val externalProjectSelector = ExternalProjectSelector(
             externalProjectProperty, externalProjects, iconsProvider

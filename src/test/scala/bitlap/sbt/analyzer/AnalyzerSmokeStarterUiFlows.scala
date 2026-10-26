@@ -13,6 +13,7 @@ import com.intellij.openapi.externalSystem.dependency.analyzer.*
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 
+/** IDE-runtime checks for action data, asynchronous models, cache invalidation and editor lifecycle. */
 object AnalyzerSmokeStarterUiFlows {
 
   def run(project: Project, check: (String, () => Unit) => Unit): Unit = {

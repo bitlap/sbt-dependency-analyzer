@@ -11,7 +11,9 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import com.intellij.openapi.externalSystem.model.project.dependencies.DependencyScopeNode
 
-/** Opt in with ANALYZER_BENCHMARK=true; timings exclude fixture generation and SDK startup. */
+/** Compares current and legacy parsers on synthetic DOT graphs. Timings cover parsing and tree construction, excluding
+ *  sbt shell, IDE startup and dependency resolution.
+ */
 class ParserBenchmarkSpec extends AnyFlatSpec {
 
   "DOT parser" should "report reproducible cold parse and tree construction timings" in {

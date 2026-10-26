@@ -36,6 +36,7 @@ import com.intellij.ui.{
 import com.intellij.ui.components.JBList
 
 // copy from https://github.com/JetBrains/intellij-scala/tree/idea242.x/scala/integration/packagesearch/src/org/jetbrains/plugins/scala/packagesearch/ui
+/** Displays candidate insertion locations and a syntax-highlighted preview; releases its editor with the wizard. */
 private class SbtPossiblePlacesPanel(
   project: Project,
   wizard: AddDependencyPreviewWizard,

@@ -10,11 +10,16 @@ import org.jetbrains.sbt.SbtUtil
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 
-/** moduleName is the published artifact name, independent of sbt project ID, IDEA name and directory. */
+/** Queries the effective sbt moduleName for imported projects loaded in the active shell. moduleName is the base
+ *  publication name, independent of project ID, IDE display name and directory; published artifact names may
+ *  additionally include cross-version suffixes.
+ */
 final class ModuleNameTask extends SbtShellOutputAnalysisTask[Map[String, String]] {
   import SbtShellOutputAnalysisTask.*
 
-  /** Query the imported project ID directly, including projects outside the root aggregate. */
+  /** Queries one project selector directly, including unaggregated projects and build-qualified external references.
+   *  Throws if the final info line does not contain a non-empty value.
+   */
   def executeForModule(project: Project, moduleId: String): String = {
     val lines = getCommandOutputLines(project, s"$moduleId / moduleName")
     lines.lastOption.collect { case SHELL_OUTPUT_RESULT_REGEX(_, _, value) => value.trim }

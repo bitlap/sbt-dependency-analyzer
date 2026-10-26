@@ -1,6 +1,8 @@
 package bitlap.sbt.analyzer.util
 
-/** Resolve published coordinates using imported sbt IDs and platform metadata, without IDEA name heuristics. */
+/** Maps a published artifact to an imported project selector using moduleName and platform metadata. Ambiguous matches
+ *  return None; IDE display names are not used as a fallback.
+ */
 object SbtModuleIdentity {
 
   def projectIdForArtifact(

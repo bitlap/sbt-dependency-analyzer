@@ -8,9 +8,12 @@ import bitlap.sbt.analyzer.parsing.DependencyDeclaration
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 
-/** Keep ambiguous declarations in a bounded, keyboard-accessible selector rather than one button per path. */
+/** Selects among ambiguous source declarations with a bounded, keyboard-accessible dialog. */
 object DeclarationChooser {
 
+  /** Returns the only candidate directly, shows a dialog for multiple candidates, or returns None on cancel/empty
+   *  input. Call on the EDT because the ambiguous case creates a modal dialog.
+   */
   def choose(
     project: Project,
     title: String,

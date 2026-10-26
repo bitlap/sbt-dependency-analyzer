@@ -14,6 +14,9 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import com.intellij.openapi.externalSystem.model.project.dependencies.*
 
+/** Standalone regression checks for graph parsing, cache invalidation, coordinate matching, settings and session
+ *  parsing.
+ */
 class AnalyzerRegressionSpec extends AnyFunSuite {
 
   private def fixture(text: String)(body: Path => Unit): Unit = {

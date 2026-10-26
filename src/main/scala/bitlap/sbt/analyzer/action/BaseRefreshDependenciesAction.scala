@@ -10,6 +10,7 @@ import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskType
 import com.intellij.openapi.externalSystem.service.internal.ExternalSystemProcessingManager
 import com.intellij.openapi.project.*
 
+/** Shared sbt action presentation that disables refresh or edit actions while import or an analyzer task is running. */
 abstract class BaseRefreshDependenciesAction extends DumbAwareAction() {
 
   lazy val eventText: String

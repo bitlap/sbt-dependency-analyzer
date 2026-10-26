@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Verify against the exact installed SDK/Scala plugin, without Marketplace dependency resolution."""
+"""Run Plugin Verifier against the configured IDE and its locally installed Scala plugin.
+
+IDE_HOME, PLUGIN_DIR and VERIFIER_VERSION can override defaults. Download the verifier
+when missing, prepare a local dependency archive, and write reports under target/verifier.
+This verifies binary compatibility, not full interactive behavior."""
 import os
 from pathlib import Path
 import shutil

@@ -4,8 +4,8 @@ import scala.collection.mutable
 
 import bitlap.sbt.analyzer.model.*
 
-/** Linear reader for sbt dependencyDot output. Layout attributes are ignored, edge labels are preserved. Subgraphs and
- *  ports deliberately use the Graphviz fallback instead of being misinterpreted.
+/** Reads the coordinate nodes and labeled edges emitted by sbt dependencyDot in a single token pass. Layout attributes
+ *  are ignored. Subgraphs and ports request the Graphviz fallback; malformed coordinates fail parsing.
  */
 private[analyzer] object SbtDotReader {
 

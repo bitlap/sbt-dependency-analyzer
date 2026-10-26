@@ -7,6 +7,7 @@ import bitlap.sbt.analyzer.util.SbtReimportProject
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 
+/** Publishes an analyzer refresh event through the project background task gate. */
 final class SbtRefreshDependenciesAction extends BaseRefreshDependenciesAction:
 
   override lazy val eventText: String = SbtDependencyAnalyzerBundle.message("analyzer.refresh.dependencies.text")

@@ -5,6 +5,7 @@ import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTrack
 import com.intellij.openapi.externalSystem.service.project.trusted.ExternalSystemTrustedProjectDialog
 import com.intellij.openapi.project.Project
 
+/** Requests external-system refreshes after checking project trust. */
 @Suppress("DEPRECATION")
 object ProjectUtil {
     fun refreshProject(project: Project) {

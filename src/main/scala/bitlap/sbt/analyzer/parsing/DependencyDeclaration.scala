@@ -5,6 +5,20 @@ import org.jetbrains.plugins.scala.lang.psi.api.expr.{ ScExpression, ScInfixExpr
 import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.psi.{ PsiElement, SmartPointerManager, SmartPsiElementPointer }
 
+/** A resolved coordinate expression and its enclosing dependency expression, retained through smart PSI pointers.
+ *  Resolve again before navigation or edits: pointers can become invalid after source changes.
+ *
+ *  @param expression
+ *    core group/artifact/version infix expression
+ *  @param scope
+ *    effective configuration inherited from the declaration or its use site
+ *  @param container
+ *    enclosing expression including scope and chained modifiers
+ *  @param editable
+ *    false when automatic edits could affect a shared definition
+ *  @param cross
+ *    original coordinate operator (%, %% or %%%), used for artifact matching
+ */
 final case class DependencyDeclaration(
   expression: SmartPsiElementPointer[ScInfixExpr],
   scope: String,
@@ -13,6 +27,9 @@ final case class DependencyDeclaration(
   cross: String = "%"
 ) {
 
+  /** Resolves both smart pointers and returns the core expression, effective scope and enclosing expression. Returns
+   *  None if either pointer no longer identifies valid PSI.
+   */
   def resolve: Option[(ScInfixExpr, String, ScExpression)] = for {
     core  <- Option(expression.getElement).filter(_.isValid)
     outer <- Option(container.getElement).filter(_.isValid)

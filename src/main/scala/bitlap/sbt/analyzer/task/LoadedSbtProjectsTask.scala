@@ -4,7 +4,9 @@ import bitlap.sbt.analyzer.util.SbtProjectReference
 
 import com.intellij.openapi.project.Project
 
-/** Discover the builds actually loaded by the active shell, rather than guessing from IDEA module directories. */
+/** Reads the active shell projects inventory, including external builds, and rejects an empty parsed result. Imported
+ *  IDE modules alone do not establish that a build is accessible from this shell.
+ */
 final class LoadedSbtProjectsTask extends SbtShellOutputAnalysisTask[Set[SbtProjectReference]] {
 
   override def executeCommand(project: Project): Set[SbtProjectReference] = {

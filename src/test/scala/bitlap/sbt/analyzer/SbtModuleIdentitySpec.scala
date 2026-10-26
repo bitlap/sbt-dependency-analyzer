@@ -4,6 +4,7 @@ import bitlap.sbt.analyzer.util.SbtModuleIdentity
 
 import org.scalatest.funsuite.AnyFunSuite
 
+/** Checks artifact-to-project selection with imported platform metadata and ambiguous module names. */
 class SbtModuleIdentitySpec extends AnyFunSuite {
 
   test("published moduleName can differ from sbt ID directory and IDEA display name") {

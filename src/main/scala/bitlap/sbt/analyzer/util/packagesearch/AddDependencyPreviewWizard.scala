@@ -10,6 +10,7 @@ import com.intellij.ide.wizard.{ AbstractWizard, Step }
 import com.intellij.openapi.project.Project
 
 // copy from https://github.com/JetBrains/intellij-scala/tree/idea242.x/scala/integration/packagesearch/src/org/jetbrains/plugins/scala/packagesearch/ui
+/** Coordinates the insertion-location wizard for a new dependency and returns the chosen PSI location. */
 class AddDependencyPreviewWizard(
   project: Project,
   elem: SbtArtifactInfo,

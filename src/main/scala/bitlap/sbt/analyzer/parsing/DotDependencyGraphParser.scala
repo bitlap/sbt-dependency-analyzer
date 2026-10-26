@@ -12,7 +12,10 @@ object DotDependencyGraphParser {
   lazy val instance: DependencyGraphParser = new DotDependencyGraphParser
 }
 
-/** Index direct edges once. Expansion is iterative, detects path cycles and has an explicit resource budget. */
+/** Builds a scope tree from indexed DOT edges using iterative expansion. Shared graph nodes may expand along multiple
+ *  paths; cycles, depth over 512 and more than 100,000 expanded nodes fail explicitly. Matching self nodes are omitted
+ *  from the displayed scope root.
+ */
 final class DotDependencyGraphParser extends DependencyGraphParser {
   override val dependencyGraphType: DependencyGraphType = DependencyGraphType.Dot
 

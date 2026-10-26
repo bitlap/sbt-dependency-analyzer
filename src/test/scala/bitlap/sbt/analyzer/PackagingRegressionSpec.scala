@@ -7,7 +7,7 @@ import scala.jdk.CollectionConverters.*
 
 import org.scalatest.funsuite.AnyFunSuite
 
-/** The IDE and forked tests load the distribution, so a successful compile alone cannot prove its contents. */
+/** Checks that the packaged plugin contains the current compiled production classes without obsolete entries. */
 class PackagingRegressionSpec extends AnyFunSuite {
 
   test("the production jar contains exactly the compiled classes, including new inner classes") {

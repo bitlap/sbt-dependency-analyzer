@@ -8,7 +8,9 @@ import com.intellij.buildsystem.model.DeclaredDependency
 import com.intellij.openapi.module.Module
 import com.intellij.psi.util.PsiModificationTracker
 
-/** Project-owned; PSI changes invalidate declarations, including edits made outside the analyzer. */
+/** Caches declarations per IDE module and project PSI modification count. Any PSI modification makes existing entries
+ *  stale on the next lookup. Callers must hold read access for resolution.
+ */
 final class DependencyDeclarationCache {
   private case class Entry(modification: Long, dependencies: List[DeclaredDependency])
   private val entries = scala.collection.mutable.Map.empty[Module, Entry]

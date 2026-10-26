@@ -17,6 +17,7 @@ import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.externalSystem.view.*
 import com.intellij.openapi.module.Module
 
+/** Opens the analyzer from an sbt tool-window node and transfers its module, dependency and scope selection. */
 final class ViewDependencyAnalyzerAction extends AbstractSbtDependencyAnalyzerAction[ExternalSystemNode[?]]:
 
   getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.name"))
@@ -77,6 +78,7 @@ final class ViewDependencyAnalyzerAction extends AbstractSbtDependencyAnalyzerAc
 
 end ViewDependencyAnalyzerAction
 
+/** Opens the analyzer for the sbt module selected in the project view. */
 final class ProjectViewDependencyAnalyzerAction extends AbstractSbtDependencyAnalyzerAction[Module]:
 
   getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.name"))
@@ -108,6 +110,7 @@ final class ProjectViewDependencyAnalyzerAction extends AbstractSbtDependencyAna
 
 end ProjectViewDependencyAnalyzerAction
 
+/** Opens the analyzer from the toolbar when the project has linked sbt builds. */
 final class ToolbarDependencyAnalyzerAction extends BaseDependencyAnalyzerAction():
 
   getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.name"))

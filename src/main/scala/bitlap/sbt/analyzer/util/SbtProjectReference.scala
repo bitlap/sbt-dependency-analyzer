@@ -5,10 +5,15 @@ import java.nio.file.Path
 
 import scala.util.Try
 
-/** An sbt project ID is unique only within its build, including builds loaded through RootProject. */
+/** Build URI and project ID identifying one sbt project, including projects loaded through RootProject. Normalization
+ *  and validation are centralized in the companion; IDs alone are not unique across builds.
+ */
 final case class SbtProjectReference private (buildUri: URI, id: String) {
+
+  /** Task-key selector in sbt shell syntax: {build-uri}project-id. */
   def selector: String = s"{${buildUri.toASCIIString}}$id"
 
+  /** Scala ProjectRef expression for set commands, with quoted and escaped URI and ID. */
   def settingReference: String =
     s"ProjectRef(uri(${SbtProjectReference.quote(buildUri.toASCIIString)}), ${SbtProjectReference.quote(id)})"
 }
@@ -20,6 +25,9 @@ object SbtProjectReference {
 
   private def quote(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+  /** Validates the project ID and absolute build URI. File URIs are normalized to absolute directory URIs with a
+   *  trailing slash; non-file URIs retain their scheme.
+   */
   def apply(uri: String, id: String): SbtProjectReference = {
     require(validId(id), s"Invalid sbt project ID: $id")
     val parsed = URI.create(uri).normalize()
@@ -37,7 +45,9 @@ object SbtProjectReference {
     else Try(apply(selector.substring(1, close), selector.substring(close + 1))).toOption
   }
 
-  /** `set` accepts Scala ProjectRef syntax, whereas task keys accept {build-uri}project-id syntax. */
+  /** Builds a Scala setting scope for set commands. An empty selector uses the current project, a local ID uses
+   *  LocalProject and a qualified selector uses ProjectRef.
+   */
   def settingScope(selector: String): String = {
     if (selector.isEmpty) ""
     else if (selector.startsWith("{"))
@@ -50,7 +60,9 @@ object SbtProjectReference {
     }
   }
 
-  /** `projects` lists loaded builds; (*) marks a build's root and * marks the current project. */
+  /** Parses build headings and project rows from sbt projects output. Accepts * for the current project and (*) for a
+   *  build root; project IDs are paired with their build URI.
+   */
   def loadedProjects(output: String): Set[SbtProjectReference] = {
     var build  = Option.empty[String]
     val result = Set.newBuilder[SbtProjectReference]

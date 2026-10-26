@@ -12,11 +12,12 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.ui.components.JBScrollPane
 
-/** Bundled HTML uses Swing so opening release notes never depends on a network connection or JCEF. */
+/** Read-only virtual file containing bundled release-note HTML; creation requires no network or JCEF. */
 private[analyzer] final class WhatsNewFile(title: String, val html: String) extends LightVirtualFile(title) {
   setWritable(false)
 }
 
+/** Replaces the default text editor only for bundled WhatsNewFile instances, including during indexing. */
 final class WhatsNewEditorProvider extends FileEditorProvider with DumbAware {
   override def accept(project: Project, file: VirtualFile): Boolean = file.isInstanceOf[WhatsNewFile]
 
@@ -26,6 +27,7 @@ final class WhatsNewEditorProvider extends FileEditorProvider with DumbAware {
   override def getPolicy: FileEditorPolicy = FileEditorPolicy.HIDE_DEFAULT_EDITOR
 }
 
+/** Renders bundled HTML with Swing and opens activated hyperlinks in the external browser. */
 private[analyzer] final class WhatsNewEditor(file: WhatsNewFile) extends UserDataHolderBase with FileEditor {
   private val pane = new JEditorPane("text/html", file.html)
   pane.setEditable(false)
