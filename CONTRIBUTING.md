@@ -24,6 +24,8 @@ ANALYZER_BENCHMARK=true sbt 'testOnly *ParserBenchmarkSpec'
 
 The suite compares a frozen pre-optimization graph expansion implementation with the current parser. Both use the same DOT input shapes; the new parser uses a linear reader for sbt output, while the frozen implementation uses Graphviz. Each case has one warmup and five measured cold parses; the slow 10,000-node legacy case has one cold sample and no warmup; it reports median, minimum and maximum in milliseconds. SDK startup, fixture generation and compilation are excluded. Timings are machine-dependent and are not IDE/sbt shell end-to-end measurements. Normal tests do not run this benchmark.
 
+The [core workflow matrix](docs/testing.md) maps behavior to automated tests and records fixture boundaries. Run `python3 tools/test-sbt-workflows.py` for real sbt command checks; CI runs this fixture as well.
+
 ## Manual sandbox matrix
 
 - Open an imported sbt project using the toolbar, module context menu and Ctrl+Shift+L (including macOS).

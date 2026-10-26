@@ -490,6 +490,8 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         val found = SbtProjectResolver.settings(root, "jvm").flatMap(SbtDeclarationResolver.dependencies(_))
         assert(found.map(_.artifact) == Seq("root"), found.toString)
       }
+      AnalyzerSmokeStarterCore.run(project, (name, body) => check(name)(body()), declaration)
+      AnalyzerSmokeStarterUiFlows.run(project, (name, body) => check(name)(body()))
       Files.writeString(output.resolve("smoke-results.txt"), results.toString)
       println(results.toString)
       System.exit(0)

@@ -54,6 +54,8 @@ jobs:
       - uses: coursier/cache-action@v8
       - name: Test
         run: sbt test psiTest
+      - name: Verify real sbt workflows
+        run: python3 tools/test-sbt-workflows.py
   
   verification:
     runs-on: ubuntu-latest
