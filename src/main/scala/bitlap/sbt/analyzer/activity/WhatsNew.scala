@@ -6,15 +6,13 @@ import bitlap.sbt.analyzer.{ Constants, SbtDependencyAnalyzerBundle, SbtDependen
 
 import org.jetbrains.plugins.scala.project.Version
 
-import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.*
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Conditions
 
-/** Builds bundled release-note HTML and opens it in an IDE editor, with a browser fallback for manual requests. */
+/** Opens release notes in the browser first, falling back to bundled HTML when browser launch fails. */
 object WhatsNew {
   private lazy val Log     = Logger.getInstance(getClass)
   private val ReleaseNotes = "https://github.com/bitlap/sbt-dependency-analyzer/releases/tag/v"
@@ -56,22 +54,51 @@ object WhatsNew {
     }
   }
 
-  /** Schedules the bundled editor for a project and acknowledges successful opening. With no project, or after an
-   *  editor failure, opens the release URL in the browser.
+  /** Launches the browser off the EDT, then reports acceptance or opens the bundled fallback on the EDT. Browser
+   *  acceptance does not prove that the remote page loaded. Injectable launchers keep tests from opening real browsers.
    */
-  def browse(version: Version, project: Project): Unit = {
-    if (project == null) BrowserUtil.browse(getReleaseNotes(version))
-    else
-      ApplicationManager.getApplication.invokeLater(
+  private[analyzer] def openReleaseNotes(
+    version: Version,
+    project: Project,
+    completed: Boolean => Unit,
+    browser: String => Boolean = ReleaseNotesBrowser.open,
+    bundled: (Version, Project) => Boolean = openPage
+  ): Unit = {
+    val app = ApplicationManager.getApplication
+    app.executeOnPooledThread((() => {
+      var cancelled = false
+      val launched  = try {
+        if (project != null && project.isDisposed) false else browser(getReleaseNotes(version))
+      } catch {
+        case _: ProcessCanceledException => cancelled = true; false
+        case NonFatal(error)             =>
+          Log.warn("Failed to launch release notes browser", error)
+          false
+      }
+      // Always run completion, including after project disposal, so pending startup requests can be released.
+      app.invokeLater(
         () => {
-          if (openPage(version, project))
-            com.intellij.ide.util.PropertiesComponent
-              .getInstance()
-              .setValue(PluginUpdateActivity.VersionProperty, version.presentation)
-          else BrowserUtil.browse(getReleaseNotes(version))
+          var opened = launched
+          try {
+            if (!launched && !cancelled && project != null && !project.isDisposed)
+              opened = bundled(version, project)
+          } finally completed(opened)
         },
-        ModalityState.nonModal(),
-        Conditions.is(project.getDisposed)
+        ModalityState.nonModal()
       )
+    }): Runnable)
   }
+
+  /** Manual and notification requests follow the same browser-first path as installation and startup. */
+  def browse(version: Version, project: Project): Unit =
+    openReleaseNotes(
+      version,
+      project,
+      opened => {
+        if (opened)
+          com.intellij.ide.util.PropertiesComponent
+            .getInstance()
+            .setValue(PluginUpdateActivity.VersionProperty, version.presentation)
+      }
+    )
 }

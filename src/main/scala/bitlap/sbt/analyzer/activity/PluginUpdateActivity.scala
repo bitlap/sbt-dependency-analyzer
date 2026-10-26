@@ -23,16 +23,19 @@ private[analyzer] object UpdatePagePolicy {
     (previous == null || previous.isEmpty || Try(Version(current) > Version(previous)).getOrElse(true))
 }
 
-/** Schedules release notes on the EDT and acknowledges a version only after its editor opens successfully.
- *  Application-level persistence prevents duplicate pages across projects; failed opens retain a notification fallback.
+/** Schedules release notes on the EDT and acknowledges a version only after a browser launch or bundled editor opens
+ *  successfully. Application-level persistence prevents duplicate pages across projects; failed opens retain a
+ *  notification fallback.
  */
 object PluginUpdateActivity {
   // The legacy .version key only meant a notification was sent, not that the page opened.
   private[analyzer] val VersionProperty = s"${SbtDependencyAnalyzerPlugin.PLUGIN_ID}.whatsNewVersion"
 
+  private val pending = scala.collection.mutable.Set.empty[String]
+
   private[analyzer] def schedule(project: Project): Unit = {
     val app = ApplicationManager.getApplication
-    if (app.isUnitTestMode || project.isDisposed) return
+    if (app.isUnitTestMode || app.isHeadlessEnvironment || project.isDisposed) return
     app.invokeLater(
       () => checkUpdate(project),
       ModalityState.nonModal(),
@@ -42,23 +45,32 @@ object PluginUpdateActivity {
 
   private[analyzer] def checkUpdate(
     project: Project,
-    open: (Version, Project) => Boolean = WhatsNew.openPage
+    open: (Version, Project, Boolean => Unit) => Unit = (version, project, completed) =>
+      WhatsNew.openReleaseNotes(version, project, completed)
   ): Unit = {
     if (project.isDisposed) return
-    // Check and acknowledge on the EDT, so simultaneous project openings cannot show duplicate pages.
+    // Reserve on the EDT before launching asynchronously to deduplicate simultaneous project openings.
     val plugin     = SbtDependencyAnalyzerPlugin.descriptor
     val properties = PropertiesComponent.getInstance()
     val current    = plugin.getVersion
-    if (UpdatePagePolicy.shouldShow(current, properties.getValue(VersionProperty))) {
-      val version = Version(current)
-      if (open(version, project)) properties.setValue(VersionProperty, current)
-      else {
-        Notifications.notifyUpdateActivity(
-          project,
-          version,
-          plugin.getName,
-          Option(plugin.getChangeNotes).getOrElse("")
-        )
+    if (UpdatePagePolicy.shouldShow(current, properties.getValue(VersionProperty)) && pending.add(current)) {
+      val version                    = Version(current)
+      val completed: Boolean => Unit = opened => {
+        pending.remove(current)
+        if (opened) properties.setValue(VersionProperty, current)
+        else if (!project.isDisposed)
+          Notifications.notifyUpdateActivity(
+            project,
+            version,
+            plugin.getName,
+            Option(plugin.getChangeNotes).getOrElse("")
+          )
+      }
+      try open(version, project, completed)
+      catch {
+        case error: Throwable =>
+          pending.remove(current)
+          throw error
       }
     }
   }

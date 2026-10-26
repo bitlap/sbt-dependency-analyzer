@@ -49,11 +49,15 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         val previous   = properties.getValue(key)
         try {
           properties.unsetValue(key)
-          activity.PluginUpdateActivity.checkUpdate(project, (_, _) => false)
+          activity.PluginUpdateActivity.checkUpdate(project, (_, _, completed) => completed(false))
           assert(properties.getValue(key) == null, "Failed opening must not acknowledge the version")
-          var attempts                                                                                             = 0
-          val open: (org.jetbrains.plugins.scala.project.Version, com.intellij.openapi.project.Project) => Boolean =
-            (_, _) => { attempts += 1; true }
+          var attempts = 0
+          val open: (
+            org.jetbrains.plugins.scala.project.Version,
+            com.intellij.openapi.project.Project,
+            Boolean => Unit
+          ) => Unit =
+            (_, _, completed) => { attempts += 1; completed(true) }
           activity.PluginUpdateActivity.checkUpdate(project, open)
           assert(properties.getValue(key) == SbtDependencyAnalyzerPlugin.descriptor.getVersion)
           activity.PluginUpdateActivity.checkUpdate(project, open)
@@ -62,6 +66,7 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
           if (previous == null) properties.unsetValue(key) else properties.setValue(key, previous)
         }
       }
+      AnalyzerSmokeStarterWhatsNew.run(project, (name, body) => check(name)(body()))
       check("registered What's New editor renders bundled HTML without JCEF or a network request") {
         val file = new activity.WhatsNewFile("What's New", "<html><body><h1>Offline release notes</h1></body></html>")
         val provider =
