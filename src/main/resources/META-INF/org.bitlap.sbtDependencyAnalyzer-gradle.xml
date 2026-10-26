@@ -1,0 +1,7 @@
+<idea-plugin>
+    <actions>
+        <action id="Gradle.ToolbarDependencyAnalyzer"
+                overrides="true"
+                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction"/>
+    </actions>
+</idea-plugin>

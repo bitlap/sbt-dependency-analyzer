@@ -1,3 +1,5 @@
+import scala.sys.process.Process
+
 import org.jetbrains.sbtidea.Keys._
 import org.jetbrains.sbtidea.verifier.FailureLevel
 lazy val scala3Version   = "3.9.0"
@@ -13,6 +15,9 @@ lazy val jbAnnotVersion        = "26.0.2"
 // https://youtrack.jetbrains.com/articles/IDEA-A-2100661679/IntelliJ-IDEA-2023.3-Latest-Builds
 lazy val intellijVersion = "261.25134.95"
 lazy val pluginVersion   = "0.11.0"
+
+lazy val gradleAnalyzerTest =
+  taskKey[Unit]("Check Gradle analyzer visibility and dynamic restoration in an isolated IDE")
 
 ThisBuild / version := pluginVersion
 
@@ -80,6 +85,18 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
     ),
     Compile / unmanagedResourceDirectories += baseDirectory.value / "src" / "main" / "resources",
     Test / unmanagedResourceDirectories += baseDirectory.value / "src" / "test" / "resources",
+    gradleAnalyzerTest := {
+      val compiled = (Test / compile).value
+      val packaged = packageArtifact.value
+      val sdk      = (ThisBuild / intellijBaseDirectory).value
+      val result   = Process(
+        Seq("python3", "tools/test-gradle-analyzer.py"),
+        baseDirectory.value,
+        "IDE_HOME"         -> sdk.getAbsolutePath,
+        "TEST_CLASSES_DIR" -> (Test / classDirectory).value.getAbsolutePath
+      ).!
+      if (result != 0) sys.error("Gradle analyzer compatibility checks failed; see target/gradle-analyzer-compat")
+    },
     patchPluginXml := pluginXmlOptions.apply { (x: org.jetbrains.sbtidea.pluginXmlOptions) =>
       {
         x.version = pluginVersion

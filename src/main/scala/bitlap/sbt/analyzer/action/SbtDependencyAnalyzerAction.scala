@@ -112,7 +112,9 @@ final class ToolbarDependencyAnalyzerAction extends BaseDependencyAnalyzerAction
 
   override def getSystemId(anActionEvent: AnActionEvent): ProjectSystemId = SbtProjectSystem.Id
 
-  override def isEnabledAndVisible(anActionEvent: AnActionEvent): Boolean = true
+  override def isEnabledAndVisible(anActionEvent: AnActionEvent): Boolean =
+    anActionEvent.getProject != null && SbtUtils.getExternalProjectPath(anActionEvent.getProject).nonEmpty &&
+    Option(anActionEvent.getData(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID)).forall(_ == SbtProjectSystem.Id)
 
   override def setSelectedState(dependencyAnalyzerView: DependencyAnalyzerView, anActionEvent: AnActionEvent): Unit =
     viewAction.setSelectedState(dependencyAnalyzerView, anActionEvent)
