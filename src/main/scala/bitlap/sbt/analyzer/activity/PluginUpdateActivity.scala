@@ -1,74 +1,71 @@
-package bitlap
-package sbt
-package analyzer
-package activity
+package bitlap.sbt.analyzer.activity
+
+import scala.util.Try
+
+import bitlap.sbt.analyzer.SbtDependencyAnalyzerPlugin
+import bitlap.sbt.analyzer.util.Notifications
 
 import org.jetbrains.plugins.scala.project.Version
 
-import com.intellij.ide.plugins.IdeaPluginDescriptor
+import com.intellij.ide.plugins.{ DynamicPluginListener, IdeaPluginDescriptor }
 import com.intellij.ide.util.PropertiesComponent
-import com.intellij.openapi.project.*
-import com.intellij.util.ui.JBUI
+import com.intellij.openapi.application.{ ApplicationManager, ModalityState }
+import com.intellij.openapi.project.{ Project, ProjectManager }
+import com.intellij.openapi.util.Conditions
 
-import analyzer.util.Notifications
+private[analyzer] object UpdatePagePolicy {
 
-object PluginUpdateActivity:
-  private val InitialVersion       = "0.0.0"
-  private lazy val VersionProperty = s"${SbtDependencyAnalyzerPlugin.PLUGIN_ID}.version"
+  def shouldShow(current: String, previous: String): Boolean =
+    current != null && current.nonEmpty && current != previous &&
+    (previous == null || previous.isEmpty || Try(Version(current) > Version(previous)).getOrElse(true))
+}
 
-end PluginUpdateActivity
+object PluginUpdateActivity {
+  // The legacy .version key only meant a notification was sent, not that the page opened.
+  private[analyzer] val VersionProperty = s"${SbtDependencyAnalyzerPlugin.PLUGIN_ID}.whatsNewVersion"
+
+  private[analyzer] def schedule(project: Project): Unit = {
+    val app = ApplicationManager.getApplication
+    if (app.isUnitTestMode || project.isDisposed) return
+    app.invokeLater(
+      () => checkUpdate(project),
+      ModalityState.nonModal(),
+      Conditions.is(project.getDisposed)
+    )
+  }
+
+  private[analyzer] def checkUpdate(
+    project: Project,
+    open: (Version, Project) => Boolean = WhatsNew.openPage
+  ): Unit = {
+    if (project.isDisposed) return
+    // Check and acknowledge on the EDT, so simultaneous project openings cannot show duplicate pages.
+    val plugin     = SbtDependencyAnalyzerPlugin.descriptor
+    val properties = PropertiesComponent.getInstance()
+    val current    = plugin.getVersion
+    if (UpdatePagePolicy.shouldShow(current, properties.getValue(VersionProperty))) {
+      val version = Version(current)
+      if (open(version, project)) properties.setValue(VersionProperty, current)
+      else {
+        Notifications.notifyUpdateActivity(
+          project,
+          version,
+          plugin.getName,
+          Option(plugin.getChangeNotes).getOrElse("")
+        )
+      }
+    }
+  }
+}
 
 final class PluginUpdateActivity extends BaseProjectActivity {
+  override def onRunActivity(project: Project): Unit = PluginUpdateActivity.schedule(project)
+}
 
-  import PluginUpdateActivity.*
+/** Dynamic installation can happen after all open projects have already run their startup activities. */
+final class PluginInstallListener extends DynamicPluginListener {
 
-  override def onRunActivity(project: Project): Unit = {
-    checkUpdate(project)
-  }
-
-  private def checkUpdate(project: Project): Unit = {
-    val plugin            = SbtDependencyAnalyzerPlugin.descriptor
-    val versionString     = plugin.getVersion
-    val properties        = PropertiesComponent.getInstance()
-    val lastVersionString = properties.getValue(VersionProperty, InitialVersion)
-    if (versionString == lastVersionString) {
-      return
-    }
-
-    val version     = Version(versionString)
-    val lastVersion = Version(lastVersionString)
-    if (version == lastVersion) {
-      return
-    }
-
-    // Simple handling of notifications
-    val isNewVersion = version > lastVersion
-    if (isNewVersion && showUpdateNotification(project, plugin, version)) {
-      properties.setValue(VersionProperty, versionString)
-    }
-  }
-
-  private def showUpdateNotification(
-    project: Project,
-    plugin: IdeaPluginDescriptor,
-    version: Version
-  ): Boolean = {
-    val latestChangeNotes =
-      if (plugin.getChangeNotes == null) "<ul><li></li></ul>"
-      else plugin.getChangeNotes.split(Constants.CHANGE_NOTES_SEPARATOR)(0)
-    val title = SbtDependencyAnalyzerBundle.message(
-      "analyzer.notification.updated.title",
-      plugin.getName,
-      version.presentation
-    )
-    val partStyle = s"margin-top: ${JBUI.scale(8)}px;"
-    val content   = SbtDependencyAnalyzerBundle.message(
-      "analyzer.notification.updated.text",
-      partStyle,
-      latestChangeNotes,
-      version.presentation
-    )
-    Notifications.notifyUpdateActivity(project, version, title, content)
-    true
-  }
+  override def pluginLoaded(plugin: IdeaPluginDescriptor): Unit =
+    if (plugin.getPluginId.getIdString == SbtDependencyAnalyzerPlugin.PLUGIN_ID)
+      ProjectManager.getInstance().getOpenProjects.foreach(PluginUpdateActivity.schedule)
 }

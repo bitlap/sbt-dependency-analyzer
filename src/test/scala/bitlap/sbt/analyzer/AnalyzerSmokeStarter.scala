@@ -39,6 +39,42 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         com.intellij.ide.impl.OpenProjectTask.build().asNewProject().withProjectName("Analyzer regression")
       )
       require(project != null, "Cannot create isolated regression project")
+      check("What's New retries after failure and acknowledges success only once") {
+        val properties = com.intellij.ide.util.PropertiesComponent.getInstance()
+        val key        = activity.PluginUpdateActivity.VersionProperty
+        val previous   = properties.getValue(key)
+        try {
+          properties.unsetValue(key)
+          activity.PluginUpdateActivity.checkUpdate(project, (_, _) => false)
+          assert(properties.getValue(key) == null, "Failed opening must not acknowledge the version")
+          var attempts                                                                                             = 0
+          val open: (org.jetbrains.plugins.scala.project.Version, com.intellij.openapi.project.Project) => Boolean =
+            (_, _) => { attempts += 1; true }
+          activity.PluginUpdateActivity.checkUpdate(project, open)
+          assert(properties.getValue(key) == SbtDependencyAnalyzerPlugin.descriptor.getVersion)
+          activity.PluginUpdateActivity.checkUpdate(project, open)
+          assert(attempts == 1, "Repeated startup must not reopen an acknowledged version")
+        } finally {
+          if (previous == null) properties.unsetValue(key) else properties.setValue(key, previous)
+        }
+      }
+      check("registered What's New editor renders bundled HTML without JCEF or a network request") {
+        val file = new activity.WhatsNewFile("What's New", "<html><body><h1>Offline release notes</h1></body></html>")
+        val provider =
+          com.intellij.openapi.fileEditor.FileEditorProvider.EP_FILE_EDITOR_PROVIDER.getExtensionList.asScala
+            .find(_.isInstanceOf[activity.WhatsNewEditorProvider])
+            .get
+        assert(provider.accept(project, file))
+        val editor = provider.createEditor(project, file)
+        try {
+          val pane = editor.getPreferredFocusedComponent.asInstanceOf[JEditorPane]
+          assert(!pane.isEditable)
+          assert(pane.getText.contains("Offline release notes"))
+          assert(editor.isValid && !editor.isModified)
+          assert(!file.isWritable)
+        } finally { provider.disposeEditor(editor) }
+        assert(!editor.isValid)
+      }
       check("registered menus") {
         Seq(
           "Sbt.ViewDependencyAnalyzer",

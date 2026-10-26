@@ -8,7 +8,6 @@ import java.nio.file.Path
 import scala.concurrent.duration.*
 
 import bitlap.sbt.analyzer.activity.WhatsNew
-import bitlap.sbt.analyzer.activity.WhatsNew.canBrowseInHTMLEditor
 
 import org.jetbrains.plugins.scala.*
 import org.jetbrains.plugins.scala.extensions.*

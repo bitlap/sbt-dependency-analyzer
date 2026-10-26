@@ -39,7 +39,15 @@
 | Python 工具语法检查、Git whitespace 检查 | 通过 |
 | 安装包检查 | 生产包不包含测试辅助插件或旧解析器基准类 |
 
-兼容性报告仍记录 16 处弃用 API、27 处实验性 API 和 16 处内部 API 使用，其中包括 Scala 插件的 sbt shell 接口。当前元数据限定 261.x；这不是对未来 IDE 版本的兼容承诺。原始结论见 [verification-verdict.txt](verification-verdict.txt)。
+兼容性报告记录 19 处弃用 API、31 处实验性 API 和 16 处内部 API 使用，其中包括 Scala 插件的 sbt shell 接口。当前元数据限定 261.x；这不是对未来 IDE 版本的兼容承诺。原始结论见 [verification-verdict.txt](verification-verdict.txt)。
+
+## 首次安装 What’s New 补充回归
+
+首次安装或升级后，在非模态 UI 队列中打开插件自带的最新更新说明；动态安装通过 `DynamicPluginListener` 补充入口。应用级版本标记仅在编辑器成功创建后写入，多个项目依次检查同一标记。新的 `.whatsNewVersion` 标记与旧的“已发送通知”标记分离，旧标记不会阻止首次打开。
+
+页面使用只读 Swing HTML 编辑器，不依赖 GitHub 加载或 JCEF。Help 菜单仍可重新打开，页面内保留发布说明链接。
+
+补充验证：`sbt test` 46 项通过；`sbt psiTest` 27 项通过。新增普通单测覆盖首次安装、升级、重复启动、降级及本地说明内容；隔离 IDEA 检查覆盖失败后不记版本、重试成功后仅触发一次、已注册编辑器的只读 HTML 渲染与释放。编辑器打开结果在状态测试中通过回调模拟，未将无界面运行时的组件验证等同于完整 IDE 的 Marketplace 安装操作。`sbt check` 和 Plugin Verifier 也通过（Compatible）。当前运行产物位于 `target/smoke/results/`，不提交验证图片。
 
 ## 耗时
 

@@ -1,60 +1,68 @@
 package bitlap.sbt.analyzer.activity
 
-import bitlap.sbt.analyzer.SbtDependencyAnalyzerBundle
+import scala.util.control.NonFatal
+
+import bitlap.sbt.analyzer.{ Constants, SbtDependencyAnalyzerBundle, SbtDependencyAnalyzerPlugin }
 
 import org.jetbrains.plugins.scala.project.Version
 
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.*
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.fileEditor.impl.HTMLEditorProvider
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Conditions
-import com.intellij.ui.jcef.JBCefApp
 
-object WhatsNew:
+object WhatsNew {
   private lazy val Log     = Logger.getInstance(getClass)
   private val ReleaseNotes = "https://github.com/bitlap/sbt-dependency-analyzer/releases/tag/v"
 
-  def canBrowseInHTMLEditor: Boolean = JBCefApp.isSupported
-
   def getReleaseNotes(version: Version): String = ReleaseNotes + version.presentation
 
+  private[analyzer] def pageHtml(title: String, notes: String, url: String): String = {
+    def escape(text: String): String = text
+      .replace("&", "&amp;")
+      .replace("<", "&lt;")
+      .replace(">", "&gt;")
+      .replace("\"", "&quot;")
+      .replace("'", "&#39;")
+    val latest =
+      Option(notes).getOrElse("").split(java.util.regex.Pattern.quote(Constants.CHANGE_NOTES_SEPARATOR), 2).head
+    s"""<!doctype html><html><head><meta charset="UTF-8"></head>
+       |<body style="font-family:sans-serif;margin:32px;line-height:1.6">
+       |<h1>${escape(title)}</h1>$latest
+       |<p><a href="${escape(url)}">${escape(url)}</a></p></body></html>""".stripMargin
+  }
+
+  /** Returns only after the IDE has created the editor; remote page loading is not a success signal. */
+  private[analyzer] def openPage(version: Version, project: Project): Boolean = {
+    if (project.isDisposed) return false
+    val title = SbtDependencyAnalyzerBundle.message("analyzer.action.whatsNew.text", "Sbt Dependency Analyzer")
+    val html  = pageHtml(title, SbtDependencyAnalyzerPlugin.descriptor.getChangeNotes, getReleaseNotes(version))
+    try {
+      FileEditorManager.getInstance(project).openFile(new WhatsNewFile(title, html), true).nonEmpty
+    } catch {
+      case e: ProcessCanceledException => throw e
+      case NonFatal(e)                 =>
+        Log.warn("Failed to open What's New page", e)
+        false
+    }
+  }
+
   def browse(version: Version, project: Project): Unit = {
-    val url = ReleaseNotes + version.presentation
-    if (project != null && canBrowseInHTMLEditor) {
+    if (project == null) BrowserUtil.browse(getReleaseNotes(version))
+    else
       ApplicationManager.getApplication.invokeLater(
         () => {
-          try {
-            // TODO Why does it often fail to open?
-            HTMLEditorProvider.openEditor(
-              project,
-              SbtDependencyAnalyzerBundle
-                .message("analyzer.action.whatsNew.text", "Sbt Dependency Analyzer"),
-              url,
-              // language=HTML
-              s"""<div style="text-align: center;padding-top: 3rem">
-                 |<div style="padding-top: 1rem; margin-bottom: 0.8rem;">${SbtDependencyAnalyzerBundle.message(
-                  "analyzer.notification.updated.failure.title"
-                )}</div>
-                 |<div><a href="$url" target="_blank"
-                 |        style="font-size: 2rem">${SbtDependencyAnalyzerBundle.message(
-                  "analyzer.notification.updated.failure.text"
-                )}</a></div>
-                 |</div>""".stripMargin
-            )
-          } catch {
-            case e: Throwable =>
-              Log.warn("""Failed to load "What's New" page""", e)
-              BrowserUtil.browse(url)
-          }
+          if (openPage(version, project))
+            com.intellij.ide.util.PropertiesComponent
+              .getInstance()
+              .setValue(PluginUpdateActivity.VersionProperty, version.presentation)
+          else BrowserUtil.browse(getReleaseNotes(version))
         },
         ModalityState.nonModal(),
         Conditions.is(project.getDisposed)
       )
-    } else {
-      BrowserUtil.browse(url)
-    }
   }
-
-end WhatsNew
+}
