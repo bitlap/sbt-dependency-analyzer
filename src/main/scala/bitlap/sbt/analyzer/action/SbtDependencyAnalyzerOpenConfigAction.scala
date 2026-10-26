@@ -21,11 +21,12 @@ final class SbtDependencyAnalyzerOpenConfigAction
     extends ExternalSystemDependencyAnalyzerOpenConfigAction(SbtProjectSystem.Id):
 
   override def getConfigFile(e: AnActionEvent): VirtualFile = {
+    if (e.getProject == null) return null
     val externalSystemConfigPath = getConfigFileOption(Option(getExternalProjectPath(e)))
     // if we cannot find module config, goto root config
     val configPath = externalSystemConfigPath
       .orElse(getConfigFileOption(SbtUtils.getExternalProjectPath(e.getProject).headOption))
-      .orNull
+      .getOrElse(null)
     if (configPath == null || configPath.isDirectory) null else configPath
   }
 
@@ -34,22 +35,26 @@ final class SbtDependencyAnalyzerOpenConfigAction
     val externalProjectDirectory = externalProjectPath.map(fileSystem.refreshAndFindFileByPath)
     val locator = ExternalSystemConfigLocator.EP_NAME.findFirstSafe(_.getTargetExternalSystemId == SbtProjectSystem.Id)
     if (locator == null) {
-      return null
+      return None
     }
 
     val externalSystemConfigPath = externalProjectDirectory.toList.filterNot(_ == null).map(locator.adjust)
 
-    externalSystemConfigPath.filterNot(_ == null).headOption
+    externalSystemConfigPath.filter(f => f != null && !f.isDirectory).headOption
   }
 
   override def getExternalProjectPath(e: AnActionEvent): String =
-    val dependency = e.getData(DependencyAnalyzerView.Companion.getDEPENDENCY)
-    if (dependency == null) return null
-    dependency.getData match
-      case dm: Dependency.Data.Module =>
-        val moduleData = dm.getUserData(Module_Data)
-        if (moduleData == null) null else moduleData.getLinkedExternalProjectPath
-      case _ => null
+    var current = e.getData(DependencyAnalyzerView.Companion.getDEPENDENCY)
+    while (current != null) {
+      current.getData match {
+        case module: Dependency.Data.Module =>
+          val data = module.getUserData(Module_Data)
+          if (data != null) return data.getLinkedExternalProjectPath
+        case _ => ()
+      }
+      current = current.getParent
+    }
+    null
   end getExternalProjectPath
 
 end SbtDependencyAnalyzerOpenConfigAction

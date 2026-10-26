@@ -196,46 +196,48 @@ object SbtDependencyUtils {
       if (configurationRequired) dependency.getScope else SbtDependencyCommon.defaultLibScope
     )
     val libDeps = getLibraryDependenciesOrPlaces(sbtFileOpt, project, module, GetDep)
-    boundary {
-      libDeps.foreach(libDep => {
-        var processedDep: List[String] = List()
-        processedDep =
-          processLibraryDependencyFromExprAndString(libDep.asInstanceOf[(ScInfixExpr, String, ScInfixExpr)])
-            .map(_.asInstanceOf[String])
-        var processedDepText: String = ""
-        processedDep match {
-          case List(a, b, c) =>
-            if (b == targetCoordinates.getVersion) {
-              processedDepText =
-                generateArtifactTextVerbose(a, c, if (versionRequired) b else "", SbtDependencyCommon.defaultLibScope)
-            } else {
-              processedDepText =
-                generateArtifactTextVerbose(a, b, if (versionRequired) c else "", SbtDependencyCommon.defaultLibScope)
-            }
-          case List(a, b, c, d) =>
-            if (b == targetCoordinates.getVersion) {
-              processedDepText = generateArtifactTextVerbose(
-                a,
-                c,
-                if (versionRequired) c else "",
-                if (configurationRequired) d else SbtDependencyCommon.defaultLibScope
-              )
-            } else {
-              processedDepText = generateArtifactTextVerbose(
-                a,
-                b,
-                if (versionRequired) c else "",
-                if (configurationRequired) d else SbtDependencyCommon.defaultLibScope
-              )
-            }
-          case _ =>
-        }
+    val matches = libDeps.filter(libDep => {
+      var processedDep: List[String] = List()
+      processedDep = processLibraryDependencyFromExprAndString(libDep.asInstanceOf[(ScInfixExpr, String, ScInfixExpr)])
+        .map(_.asInstanceOf[String])
+      var processedDepText: String = ""
+      processedDep match {
+        case List(a, b, c) =>
+          if (b == targetCoordinates.getVersion) {
+            processedDepText =
+              generateArtifactTextVerbose(a, c, if (versionRequired) b else "", SbtDependencyCommon.defaultLibScope)
+          } else {
+            processedDepText =
+              generateArtifactTextVerbose(a, b, if (versionRequired) c else "", SbtDependencyCommon.defaultLibScope)
+          }
+        case List(a, b, c, d) =>
+          if (b == targetCoordinates.getVersion) {
+            processedDepText = generateArtifactTextVerbose(
+              a,
+              c,
+              if (versionRequired) c else "",
+              if (configurationRequired) d else SbtDependencyCommon.defaultLibScope
+            )
+          } else {
+            processedDepText = generateArtifactTextVerbose(
+              a,
+              b,
+              if (versionRequired) c else "",
+              if (configurationRequired) d else SbtDependencyCommon.defaultLibScope
+            )
+          }
+        case _ =>
+      }
 
-        if (targetDepText.equals(processedDepText)) {
-          boundary.break(libDep.asInstanceOf[(ScInfixExpr, String, ScInfixExpr)])
-        }
-      })
-      null.asInstanceOf[(ScInfixExpr, String, ScInfixExpr)]
+      targetDepText.equals(processedDepText)
+    })
+    matches match {
+      case Seq(one) => one.asInstanceOf[(ScInfixExpr, String, ScInfixExpr)]
+      case Seq()    => null
+      case _        =>
+        throw new IllegalArgumentException(
+          "Multiple dependency declarations match; choose a declaration in the analyzer"
+        )
     }
   }
 
@@ -245,7 +247,7 @@ object SbtDependencyUtils {
     mode: GetMode
   ): Seq[(PsiElement, String, PsiElement)] = {
     var res: Seq[(PsiElement, String, PsiElement)] = Seq()
-    val sbtFileModule                              = psiSbtFile.module.orNull
+    val sbtFileModule                              = psiSbtFile.module.getOrElse(null)
     if (sbtFileModule != null && (sbtFileModule == module || sbtFileModule.getName == s"""${module.getName}-build"""))
       res ++= getTopLevelLibraryDependencies(psiSbtFile).flatMap(libDep =>
         getLibraryDependenciesOrPlacesFromPsi(libDep, mode)
@@ -808,61 +810,67 @@ object SbtDependencyUtils {
       .flatMap(getSbtFileFromBuildModule)
       .orElse(getSbtFileFromBuildModule(module)) // if module is itself a build module
 
-  /** copy from DependencyModifierService, and fix
-   */
+  /** Resolve source declarations for the imported sbt identity, retaining use sites separately from definitions. */
   def declaredDependencies(module: OpenapiModule): java.util.List[DeclaredDependency] = try {
-    // Check whether the IDE is in Dumb Mode. If it is, return empty list instead proceeding
-    // if (DumbService.getInstance(module.getProject).isDumb) return Collections.emptyList()
-    val scalaVer = module.scalaMinorVersion.map(_.major).getOrElse(ScalaVersion.default.major)
-    inReadAction({
-      val libDeps = SbtDependencyUtils
-        .getLibraryDependenciesOrPlaces(
-          SbtDependencyUtils.getSbtFileOpt(module),
-          module.getProject,
-          module,
-          SbtDependencyUtils.GetMode.GetDep
+    inReadAction {
+      val platform = if (module.isScalaJs) "js" else if (module.isScalaNative) "native" else "jvm"
+      val roots    = getSbtFileOpt(module).toSeq.flatMap { build =>
+        // sbt loads every .sbt file in a project directory, not only build.sbt.
+        val directories = Seq(
+          Option(build.getParent),
+          getSbtModuleData(module).flatMap(data =>
+            Option(com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(data.baseDirectory))
+          )
+        ).flatten.distinct
+        directories.flatMap(_.getChildren).filter(_.getExtension == "sbt").toSeq
+      }.distinct.flatMap(f =>
+        Option(PsiManager.getInstance(module.getProject).findFile(f)).collect { case file: ScalaFile =>
+          file
+        }
+      )
+      val expressions = roots.flatMap { file =>
+        val projects  = bitlap.sbt.analyzer.parsing.SbtProjectResolver.projects(file)
+        val selected  = projects.filter(DependencyUtils.containsModuleName(_, module))
+        val settings  = selected.flatMap(bitlap.sbt.analyzer.parsing.SbtProjectResolver.settings(_, platform))
+        val base      = getSbtModuleData(module).map(_.baseDirectory.toPath.toAbsolutePath.normalize())
+        val localFile = Option(file.getVirtualFile).exists(f =>
+          base.contains(java.nio.file.Path.of(f.getParent.getPath).toAbsolutePath.normalize())
         )
-        .map(_.asInstanceOf[(ScInfixExpr, String, ScInfixExpr)])
-      libDeps
-        .map(libDepInfixAndString => {
-          val libDepArr = SbtDependencyUtils
-            .processLibraryDependencyFromExprAndString(libDepInfixAndString)
-            .map(_.asInstanceOf[String])
+        val id       = org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(module).map(_.id)
+        val topLevel = file.getChildren.toSeq.collect {
+          case e: ScInfixExpr if bitlap.sbt.analyzer.parsing.SbtDeclarationResolver.dependencyKey(e.left) => e
+        }.filter(e => id.exists(bitlap.sbt.analyzer.parsing.SbtProjectResolver.appliesTo(e.left, _, localFile)))
+        settings ++ topLevel
+      }
+      expressions
+        .flatMap(
+          bitlap.sbt.analyzer.parsing.SbtDeclarationResolver
+            .dependencies(_, org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(module).map(_.id))
+        )
+        .distinctBy(e => (e.site, e.core, e.scope))
+        .map { entry =>
+          val manager     = SmartPointerManager.getInstance(module.getProject)
+          val declaration = bitlap.sbt.analyzer.parsing.DependencyDeclaration(
+            manager.createSmartPsiElementPointer(entry.core),
+            entry.scope,
+            manager.createSmartPsiElementPointer(entry.site),
+            entry.editable,
+            entry.cross
+          )
           val dataContext: DataContext = (dataId: String) => {
-            if (CommonDataKeys.PSI_ELEMENT.is(dataId)) {
-              libDepInfixAndString
-            } else null
+            if (bitlap.sbt.analyzer.parsing.DependencyDeclaration.Key.is(dataId)) declaration
+            else if (CommonDataKeys.PSI_ELEMENT.is(dataId)) declaration.expression.getElement
+            else null
           }
-
-          libDepArr.length match {
-            case x if x < 3 || x > 4 => null
-            case x if x >= 3         =>
-              val scope         = if (x == 3) SbtDependencyCommon.defaultLibScope else libDepArr(3)
-              val fixedArtifact =
-                if (!DependencyScopeEnum.values.exists(_.toString.toLowerCase.contains(scope.toLowerCase))) {
-                  scope
-                } else libDepArr(1)
-              if (SbtDependencyUtils.isScalaLibraryDependency(libDepInfixAndString._1))
-                new DeclaredDependency(
-                  new UnifiedDependency(
-                    libDepArr.head,
-                    SbtDependencyUtils.buildScalaArtifactIdString(libDepArr.head, fixedArtifact, scalaVer),
-                    libDepArr(2),
-                    scope
-                  ),
-                  dataContext
-                )
-              else
-                new DeclaredDependency(
-                  new UnifiedDependency(libDepArr.head, fixedArtifact, libDepArr(2), scope),
-                  dataContext
-                )
-          }
-        })
-        .filter(_ != null)
+          // Matching retains the declared artifact; cross-version normalization belongs in the matcher.
+          new DeclaredDependency(
+            new UnifiedDependency(entry.group, entry.artifact, entry.version, entry.scope),
+            dataContext
+          )
+        }
         .toList
         .asJava
-    })
+    }
   } catch {
     case c: ControlFlowException =>
       throw c

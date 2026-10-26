@@ -16,9 +16,6 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 final class SettingsState extends PersistentStateComponent[SettingsState] {
 
   @BeanProperty
-  var sbtModules: JMap[String, String] = Collections.emptyMap()
-
-  @BeanProperty
   var disableAnalyzeCompile: Boolean = false
 
   @BeanProperty
@@ -37,6 +34,7 @@ final class SettingsState extends PersistentStateComponent[SettingsState] {
 
   override def loadState(state: SettingsState): Unit = {
     XmlSerializerUtil.copyBean(state, this)
+    fileCacheTimeout = math.max(0, fileCacheTimeout)
   }
 
 }

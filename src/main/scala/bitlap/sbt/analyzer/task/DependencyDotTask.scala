@@ -7,6 +7,8 @@ import bitlap.sbt.analyzer.model.*
 import bitlap.sbt.analyzer.parsing.*
 import bitlap.sbt.analyzer.util.DependencyUtils.*
 
+import org.jetbrains.plugins.scala.project.*
+
 import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.model.project.dependencies.DependencyScopeNode
 import com.intellij.openapi.project.Project
@@ -25,7 +27,7 @@ final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
     ideaModuleIdSbtModules: Map[String, String]
   ): DependencyScopeNode =
     val module   = findModule(project, moduleData)
-    val moduleId = moduleData.getId.split(" ")(0)
+    val moduleId = sbtProjectId(project, moduleData)
 
     taskCompleteCallback(project, moduleData, scope) { file =>
       val sbtModuleNameMap =
@@ -40,7 +42,20 @@ final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
             scope,
             organization,
             moduleNamePaths,
-            sbtModuleNameMap
+            sbtModuleNameMap,
+            cacheTimeoutMillis = SettingsState.getSettings(project).fileCacheTimeout.toLong * 1000,
+            dotCache = AnalyzerCacheService.getInstance(project).dotFiles,
+            modulePlatforms = com.intellij.openapi.module.ModuleManager
+              .getInstance(project)
+              .getModules
+              .toSeq
+              .filterNot(canIgnoreModule)
+              .flatMap(m =>
+                org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(m).map { ref =>
+                  ref.id -> (if (m.isScalaJs) "js" else if (m.isScalaNative) "native" else "jvm")
+                }
+              )
+              .toMap
           ),
           createRootScopeNode(scope, project)
         )

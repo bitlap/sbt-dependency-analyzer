@@ -1,49 +1,29 @@
 package bitlap.sbt.analyzer.parsing
 
-import java.util.concurrent.{ ConcurrentHashMap, ConcurrentMap }
-
 import scala.jdk.CollectionConverters.*
 
-import bitlap.sbt.analyzer.Constants
 import bitlap.sbt.analyzer.util.SbtDependencyUtils
 
 import com.intellij.buildsystem.model.DeclaredDependency
-import com.intellij.openapi.module.Module as OpenapiModule
+import com.intellij.openapi.module.Module
+import com.intellij.psi.util.PsiModificationTracker
 
-object DependencyDeclarationCache {
+/** Project-owned; PSI changes invalidate declarations, including edits made outside the analyzer. */
+final class DependencyDeclarationCache {
+  private case class Entry(modification: Long, dependencies: List[DeclaredDependency])
+  private val entries = scala.collection.mutable.Map.empty[Module, Entry]
 
-  private val cache: ConcurrentMap[String, List[DeclaredDependency]] =
-    new ConcurrentHashMap[String, List[DeclaredDependency]]()
-
-  private case class CacheEntry(
-    dependencies: List[DeclaredDependency],
-    timestamp: Long
-  )
-
-  private val cacheWithTTL: ConcurrentMap[String, CacheEntry] = new ConcurrentHashMap[String, CacheEntry]()
-
-  def getDeclaredDependencyWithCache(module: OpenapiModule): List[DeclaredDependency] = {
-    val moduleKey = module.getName + "@" + module.getModuleFilePath
-
-    Option(cacheWithTTL.get(moduleKey)) match {
-      case Some(entry) if System.currentTimeMillis() - entry.timestamp < Constants.DECLARED_CACHE_TIMEOUT =>
-        entry.dependencies
-      case _ =>
+  def getDeclaredDependencyWithCache(module: Module): List[DeclaredDependency] = synchronized {
+    if (module == null || module.isDisposed) return Nil
+    val modification = PsiModificationTracker.getInstance(module.getProject).getModificationCount
+    entries.get(module) match {
+      case Some(entry) if entry.modification == modification => entry.dependencies
+      case _                                                 =>
         val dependencies = SbtDependencyUtils.declaredDependencies(module).asScala.toList
-        if (dependencies.nonEmpty) {
-          cacheWithTTL.put(moduleKey, CacheEntry(dependencies, System.currentTimeMillis()))
-        }
-
+        entries.put(module, Entry(modification, dependencies))
         dependencies
     }
   }
-
-  def invalidateCache(module: OpenapiModule): Unit = {
-    val moduleKey = module.getName + "@" + module.getModuleFilePath
-    cacheWithTTL.remove(moduleKey)
-  }
-
-  def clearAllCache(): Unit = {
-    cacheWithTTL.clear()
-  }
+  def invalidateCache(module: Module): Unit = synchronized { entries.remove(module); () }
+  def clearAllCache(): Unit                 = synchronized { entries.clear() }
 }

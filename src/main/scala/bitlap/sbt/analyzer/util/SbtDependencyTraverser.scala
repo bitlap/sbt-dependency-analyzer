@@ -20,7 +20,7 @@ object SbtDependencyTraverser {
     callback(stringLiteral)
 
   def traverseInfixExpr(infixExpr: ScInfixExpr)(callback: PsiElement => Boolean): Unit = {
-    if (!callback(infixExpr)) return
+    if (infixExpr == null || !callback(infixExpr)) return
 
     def traverse(expr: ScExpression): Unit = {
       expr match {

@@ -1,60 +1,43 @@
-package bitlap
-package sbt
-package analyzer
-package task
+package bitlap.sbt.analyzer.task
 
-import scala.collection.mutable
+import scala.jdk.CollectionConverters.*
 
+import bitlap.sbt.analyzer.util.DependencyUtils
+
+import org.jetbrains.plugins.scala.extensions.*
+import org.jetbrains.sbt.SbtUtil
+
+import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 
-import Constants.*
-
-/** Handles the `sbt moduleName` command to retrieve all module names within an sbt project. This specifically refers to
- *  modules declared via `name := ` in the `build.sbt` file, as opposed to those defined within IntelliJ IDEA's project
- *  structure.
- */
-final class ModuleNameTask extends SbtShellOutputAnalysisTask[Map[String, String]]:
+/** moduleName is the published artifact name, independent of sbt project ID, IDEA name and directory. */
+final class ModuleNameTask extends SbtShellOutputAnalysisTask[Map[String, String]] {
   import SbtShellOutputAnalysisTask.*
 
-  /** {{{
-   *    lazy val `rolls` = (project in file("."))
-   *  .aggregate(
-   *  `rolls-compiler-plugin`,
-   *  `rolls-core`,
-   *  `rolls-csv`,
-   *  `rolls-zio`,
-   *  `rolls-plugin-tests`,
-   *  `rolls-docs`
-   *  )
-   *  }}}
-   *  The `rolls-docs` module cannot be processed unless it is explicitly aggregated within the build configuration.
-   *
-   *  TODO support executing the command for a single module: `rolls-docs / moduleName` to get module Name
-   */
-  override def executeCommand(project: Project): Map[String, String] =
-    val mms                      = getCommandOutputLines(project, "moduleName")
-    val moduleIdSbtModuleNameMap = mutable.HashMap[String, String]()
-    if ((mms.size & 1) == 0) {
-      for (i <- 0 until mms.size - 1 by 2) {
-        moduleIdSbtModuleNameMap.put(mms(i).trim, mms(i + 1).trim)
-      }
-    } else if (mms.size == 1) moduleIdSbtModuleNameMap.put(SINGLE_SBT_MODULE, mms.head)
+  /** Query the imported project ID directly, including projects outside the root aggregate. */
+  def executeForModule(project: Project, moduleId: String): String = {
+    val lines = getCommandOutputLines(project, s"$moduleId / moduleName")
+    lines.lastOption.collect { case SHELL_OUTPUT_RESULT_REGEX(_, _, value) => value.trim }
+      .filter(_.nonEmpty)
+      .getOrElse(throw new IllegalStateException(s"No moduleName returned for $moduleId"))
+  }
 
-    moduleIdSbtModuleNameMap.map { (k, v) =>
-      val key = k match
-        case MODULE_NAME_INPUT_REGEX(_, _, moduleName, _, _) => moduleName.trim
-        case ROOT_MODULE_NAME_INPUT_REGEX(_, _)              => ROOT_SBT_MODULE
-        case SINGLE_SBT_MODULE                               => SINGLE_SBT_MODULE
-        case _                                               => EMPTY_STRING
-
-      val value = v match
-        case SHELL_OUTPUT_RESULT_REGEX(_, _, sbtModuleName) => sbtModuleName.trim
-        case _                                              => EMPTY_STRING
-
-      key -> value
-
-    }.filter(kv => kv._1 != EMPTY_STRING && kv._2 != EMPTY_STRING).toMap
-
-  end executeCommand
-
-end ModuleNameTask
+  override def executeCommand(project: Project): Map[String, String] = {
+    val root = java.nio.file.Path.of(SbtUtil.getWorkingDirPath(project)).toAbsolutePath.normalize()
+    val ids  = inReadAction {
+      ModuleManager
+        .getInstance(project)
+        .getModules
+        .toSeq
+        .filterNot(DependencyUtils.canIgnoreModule)
+        .filter(m =>
+          Option(com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil.getExternalRootProjectPath(m))
+            .exists(path => java.nio.file.Path.of(path).toAbsolutePath.normalize() == root)
+        )
+        .flatMap(SbtUtil.getSbtProjectUriAndId)
+        .map(_.id)
+        .distinct
+    }
+    ids.map(id => id -> executeForModule(project, id)).toMap
+  }
+}

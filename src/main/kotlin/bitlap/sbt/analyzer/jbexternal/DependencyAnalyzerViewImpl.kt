@@ -32,7 +32,7 @@ import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
 import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectNotificationAware.Companion.isNotificationVisibleProperty
+import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectNotificationAware
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerExtension
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerProject
@@ -110,6 +110,14 @@ class DependencyAnalyzerViewImpl(
 
     private val backgroundExecutor =
         AppExecutorUtil.createBoundedApplicationPoolExecutor("DependencyAnalyzerView.backgroundExecutor", 1)
+
+    @Volatile private var disposed = false
+    private val modelRevision = java.util.concurrent.atomic.AtomicLong()
+    private val filterRevision = java.util.concurrent.atomic.AtomicLong()
+    private val usagesRevision = java.util.concurrent.atomic.AtomicLong()
+    private var viewComponent: JComponent? = null
+    private var loadingError: String? = null
+    private val filterTimer = javax.swing.Timer(150) { rebuildFilteredModel() }.apply { isRepeats = false }
 
     private val dependencyLoadingOperation = AtomicOperationTrace("DA: Dependency loading")
     private val dependencyLoadingProperty = dependencyLoadingOperation.getOperationInProgressProperty()
@@ -192,8 +200,14 @@ class DependencyAnalyzerViewImpl(
     }
 
     private fun updateViewModel() {
-        executeLoadingTaskOnEdt {
-            updateExternalProjectsModel()
+        modelRevision.incrementAndGet()
+        filterRevision.incrementAndGet()
+        usagesRevision.incrementAndGet()
+        runInEdt {
+            if (!disposed) {
+                dependencyModel = emptyList()
+                updateExternalProjectsModel()
+            }
         }
     }
 
@@ -222,13 +236,18 @@ class DependencyAnalyzerViewImpl(
         }, onUiThread = { projects ->
             externalProjects.addAll(projects)
 
-            externalProject = externalProjects.find { it == externalProject } ?: externalProjects.firstOrNull()
+            val selected = externalProjects.find { it == externalProject } ?: externalProjects.firstOrNull()
+            if (selected == externalProject) {
+                updateScopesModel()
+                updateDependencyModel()
+            } else externalProject = selected
         })
     }
 
     private fun updateScopesModel() {
+        val selectedProject = externalProject
         executeLoadingTask(onBackgroundThread = {
-            externalProject?.let(contributor::getDependencyScopes) ?: emptyList()
+            selectedProject?.let(contributor::getDependencyScopes) ?: emptyList()
         }, onUiThread = { scopes ->
             val scopesIndex = dependencyScopeFilter.associate { it.scope to it.isSelected }
             val isAny = scopesIndex.all { it.value }
@@ -238,30 +257,51 @@ class DependencyAnalyzerViewImpl(
 
     private fun updateDependencyModel() {
         dependencyModel = emptyList()
+        val selectedProject = externalProject
+        val groupId = showDependencyGroupId
         executeLoadingTask(onBackgroundThread = {
-            externalProject?.let(contributor::getDependencies) ?: emptyList()
-        }, onUiThread = { dependencies ->
-            dependencyModel = dependencies.collectAllDependencies().createDependencyGroups()
-        })
+            (selectedProject?.let(contributor::getDependencies) ?: emptyList()).collectAllDependencies().createDependencyGroups(groupId)
+        }, onUiThread = { groups -> dependencyModel = groups })
     }
 
     private fun updateFilteredDependencyModel() {
-        val filteredDependencyGroups =
-            dependencyModel.asSequence().map { it.variances.filterDependencies() }.filter { it.isNotEmpty() }
-                .map { DependencyGroup(it) }.toList()
-        dependencyListModel.replaceAll(filteredDependencyGroups)
+        if (disposed) return
+        filterRevision.incrementAndGet()
+        filterTimer.restart()
+    }
 
-        val filteredDependencies = filteredDependencyGroups.flatMap { it.variances }
-        dependencyTreeModel.setRoot(buildTree(filteredDependencies))
-
-        dependency = filteredDependencies.find { it == dependency } ?: filteredDependencies.firstOrNull()
+    private fun rebuildFilteredModel() {
+        if (disposed) return
+        val revision = filterRevision.get()
+        val model = dependencyModel
+        val query = dependencyDataFilter.lowercase(Locale.ROOT)
+        val scopes = dependencyScopeFilter.filter { it.isSelected }.map { it.scope }.toSet()
+        val warningsOnly = showDependencyWarnings
+        val groupId = showDependencyGroupId
+        backgroundExecutor.execute {
+            val groups = model.mapNotNull { group ->
+                val matches = group.variances.filter {
+                    query in it.data.getDisplayText(groupId).lowercase(Locale.ROOT) && it.scope in scopes && (!warningsOnly || it.hasWarnings)
+                }
+                if (matches.isEmpty()) null else DependencyGroup(matches)
+            }
+            val dependencies = groups.flatMap { it.variances }
+            val tree = buildTree(dependencies, groupId)
+            javax.swing.SwingUtilities.invokeLater {
+                if (!disposed && revision == filterRevision.get()) {
+                    dependencyListModel.replaceAll(groups)
+                    dependencyTreeModel.setRoot(tree)
+                    dependency = dependencies.find { it == dependency } ?: dependencies.firstOrNull()
+                }
+            }
+        }
     }
 
     private fun updateDependencyEmptyState() {
         runInEdt {
             dependencyEmptyState = when {
                 dependencyLoadingOperation.isOperationInProgress() -> ""
-                else -> ExternalSystemBundle.message("external.system.dependency.analyzer.resolved.empty")
+                else -> loadingError ?: ExternalSystemBundle.message("external.system.dependency.analyzer.resolved.empty")
             }
         }
     }
@@ -274,27 +314,44 @@ class DependencyAnalyzerViewImpl(
     }
 
     private fun updateUsagesModel() {
-        val dependencies =
-            dependencyModel.asSequence().filter { group -> dependency?.data in group.variances.map { it.data } }
-                .flatMap { it.variances }.asIterable()
-        usagesTreeModel.setRoot(buildTree(dependencies))
-    }
-
-    private fun executeLoadingTaskOnEdt(onUiThread: () -> Unit) {
-        dependencyLoadingOperation.traceStart()
-        runInEdt {
-            onUiThread()
-            dependencyLoadingOperation.traceFinish()
+        if (disposed) return
+        val revision = usagesRevision.incrementAndGet()
+        val selected = dependency?.data
+        val model = dependencyModel
+        val groupId = showDependencyGroupId
+        backgroundExecutor.execute {
+            val matches = model.filter { group -> group.variances.any { it.data == selected } }.flatMap { it.variances }
+            val tree = buildTree(matches, groupId)
+            javax.swing.SwingUtilities.invokeLater {
+                if (!disposed && revision == usagesRevision.get()) usagesTreeModel.setRoot(tree)
+            }
         }
     }
 
     private fun <R> executeLoadingTask(onBackgroundThread: () -> R, onUiThread: (R) -> Unit) {
+        if (disposed) return
+        val revision = modelRevision.get()
         dependencyLoadingOperation.traceStart()
-        BackgroundTaskUtil.execute(backgroundExecutor, parentDisposable) {
-            val result = onBackgroundThread()
-            invokeLater {
-                onUiThread(result)
-                dependencyLoadingOperation.traceFinish()
+        loadingError = null
+        backgroundExecutor.execute {
+            val result = try { Result.success(onBackgroundThread()) } catch (error: Exception) { Result.failure(error) }
+            javax.swing.SwingUtilities.invokeLater {
+                try {
+                    if (!disposed && revision == modelRevision.get()) {
+                        result.fold(onSuccess = onUiThread, onFailure = { error ->
+                            if (error !is com.intellij.openapi.progress.ProcessCanceledException) {
+                                loadingError = error.message ?: error.toString()
+                                logger<DependencyAnalyzerView>().warn("Dependency analysis failed", error)
+                                com.intellij.notification.NotificationGroupManager.getInstance()
+                                    .getNotificationGroup("Sbt.DependencyAnalyzer.Notification")
+                                    .createNotification(loadingError!!, com.intellij.notification.NotificationType.ERROR)
+                                    .addAction(com.intellij.notification.NotificationAction.createSimple(
+                                        SbtDependencyExternalBundle.message("analyzer.external.retry")) { updateViewModel() })
+                                    .notify(project)
+                            }
+                        })
+                    }
+                } finally { dependencyLoadingOperation.traceFinish() }
             }
         }
     }
@@ -307,14 +364,14 @@ class DependencyAnalyzerViewImpl(
         }
     }
 
-    private fun buildTree(dependencies: Iterable<Dependency>): DefaultMutableTreeNode? {
+    private fun buildTree(dependencies: Iterable<Dependency>, groupId: Boolean = showDependencyGroupId): DefaultMutableTreeNode? {
         val dependenciesForTree = dependencies.collectAllDependencies()
 
         if (dependenciesForTree.isEmpty()) {
             return null
         }
         val rootDependencyGroup =
-            dependenciesForTree.filter { it.parent == null }.createDependencyGroups().singleOrNull()
+            dependenciesForTree.filter { it.parent == null }.createDependencyGroups(groupId).singleOrNull()
         if (rootDependencyGroup == null) {
             val rawTree = dependenciesForTree.joinToString("\n")
             logger<DependencyAnalyzerView>().error("Cannot determine root of dependency tree:\n$rawTree")
@@ -334,7 +391,7 @@ class DependencyAnalyzerViewImpl(
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
             val dependencyGroup = node.userObject as DependencyGroup
-            val children = dependencyGroup.variances.flatMap { nodeMap[it] ?: emptyList() }.createDependencyGroups()
+            val children = dependencyGroup.variances.flatMap { nodeMap[it] ?: emptyList() }.createDependencyGroups(groupId)
             for (child in children) {
                 val childNode = DefaultMutableTreeNode(child)
                 node.add(childNode)
@@ -345,7 +402,12 @@ class DependencyAnalyzerViewImpl(
     }
 
     private fun Iterable<Dependency>.collectAllDependencies(): Set<Dependency> {
-        return flatMap { getTreePath(it) }.toSet()
+        val result = LinkedHashSet<Dependency>()
+        for (dependency in this) {
+            var current: Dependency? = dependency
+            while (current != null && result.add(current)) current = current.parent
+        }
+        return result
     }
 
     private fun getTreePath(dependency: Dependency): List<Dependency> {
@@ -363,9 +425,9 @@ class DependencyAnalyzerViewImpl(
         is Dependency.Data.Artifact -> "$groupId:$artifactId"
     }
 
-    private fun Iterable<Dependency>.createDependencyGroups(): List<DependencyGroup> = sortedWith(
+    private fun Iterable<Dependency>.createDependencyGroups(groupId: Boolean = showDependencyGroupId): List<DependencyGroup> = sortedWith(
         Comparator.comparing(
-            { it.data }, DependencyDataComparator(showDependencyGroupId)
+            { it.data }, DependencyDataComparator(groupId)
         )
     ).groupBy { it.data.getGroup() }.map { DependencyGroup(it.value) }
 
@@ -392,7 +454,16 @@ class DependencyAnalyzerViewImpl(
         val viewOptionsButton = popupActionGroup(showDependencyGroupIdAction, showDependencySizeAction).apply {
             templatePresentation.icon = AllIcons.Actions.Show
         }.asActionButton(ACTION_PLACE).bindEnabled(!dependencyLoadingProperty)
-        val reloadNotificationProperty = isNotificationVisibleProperty(project, systemId)
+        val notificationAware = ExternalSystemProjectNotificationAware.getInstance(project)
+        val reloadNotificationProperty = AtomicProperty(notificationAware.isNotificationVisible(systemId))
+        com.intellij.openapi.application.ApplicationManager.getApplication().messageBus.connect(parentDisposable)
+            .subscribe(ExternalSystemProjectNotificationAware.TOPIC, object : ExternalSystemProjectNotificationAware.Listener {
+                override fun onNotificationChanged(project: Project) {
+                    if (project == this@DependencyAnalyzerViewImpl.project) runInEdt {
+                        if (!disposed) reloadNotificationProperty.set(notificationAware.isNotificationVisible(systemId))
+                    }
+                }
+            })
         val projectReloadSeparator = separator().bindVisible(reloadNotificationProperty)
         val projectReloadAction = action { ProjectUtil.refreshProject(project) }.apply {
             templatePresentation.icon = AllIcons.Actions.BuildLoadChanges
@@ -484,19 +555,25 @@ class DependencyAnalyzerViewImpl(
                 }
             })
         }.also {
+            viewComponent = it
             it.addPreferredFocusedComponent(dataFilterField)
         }
     }
 
     init {
-        externalProjectProperty.afterChange { updateScopesModel() }
+        com.intellij.openapi.util.Disposer.register(parentDisposable, Disposable {
+            disposed = true
+            filterTimer.stop()
+            backgroundExecutor.shutdownNow()
+        })
+        externalProjectProperty.afterChange { modelRevision.incrementAndGet(); updateScopesModel() }
         externalProjectProperty.afterChange { updateDependencyModel() }
         dependencyModelProperty.afterChange { updateFilteredDependencyModel() }
         dependencyDataFilterProperty.afterChange { updateFilteredDependencyModel() }
         dependencyScopeFilterProperty.afterChange { updateFilteredDependencyModel() }
         showDependencyWarningsProperty.afterChange { updateFilteredDependencyModel() }
         showDependencyGroupIdProperty.afterChange { updateFilteredDependencyModel() }
-        showDependencySizeProperty.afterChange { updateFilteredDependencyModel() }
+        showDependencySizeProperty.afterChange { viewComponent?.repaint() }
         dependencyProperty.afterChange { updateUsagesTitle() }
         dependencyProperty.afterChange { updateUsagesModel() }
         showDependencyGroupIdProperty.afterChange { updateUsagesTitle() }

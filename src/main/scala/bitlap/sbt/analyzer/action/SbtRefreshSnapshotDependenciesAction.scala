@@ -15,8 +15,24 @@ final class SbtRefreshSnapshotDependenciesAction extends BaseRefreshDependencies
     SbtDependencyAnalyzerBundle.message("analyzer.refresh.snapshot.dependencies.description")
 
   override def actionPerformed(e: AnActionEvent): Unit = {
-    SbtShellOutputAnalysisTask.refreshSnapshotsTask.executeCommand(e.getProject)
-    SbtReimportProject.ReimportProjectPublisher.onReimportProject(e.getProject)
+    val project = e.getProject
+    if (project == null) return
+    var selected =
+      e.getData(com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView.Companion.getDEPENDENCY)
+    while (selected != null && selected.getParent != null) selected = selected.getParent
+    val moduleId = Option(selected)
+      .flatMap(d =>
+        d.getData match {
+          case module: com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency.Data.Module =>
+            Option(module.getUserData(Module_Data)).map(sbtProjectId(project, _))
+          case _ => None
+        }
+      )
+      .getOrElse("")
+    SbtTaskRunner.getInstance(project).run(eventText) {
+      new RefreshSnapshotsTask().executeForModule(project, moduleId)
+      SbtReimportProject.ReimportProjectPublisher.onReimportProject(project)
+    }
   }
 
 end SbtRefreshSnapshotDependenciesAction

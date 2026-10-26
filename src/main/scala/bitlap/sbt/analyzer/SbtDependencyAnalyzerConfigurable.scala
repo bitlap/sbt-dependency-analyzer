@@ -7,7 +7,12 @@ import com.intellij.openapi.project.Project
 
 final class SbtDependencyAnalyzerConfigurable(project: Project) extends SearchableConfigurable.Parent.Abstract {
 
-  private lazy val panel: SbtDependencyAnalyzerPanel = new SbtDependencyAnalyzerPanel(project)
+  private var currentPanel: SbtDependencyAnalyzerPanel = null
+
+  private def panel: SbtDependencyAnalyzerPanel = {
+    if (currentPanel == null) currentPanel = new SbtDependencyAnalyzerPanel(project)
+    currentPanel
+  }
 
   override def getId: String = SbtDependencyAnalyzerPlugin.PLUGIN_ID
 
@@ -15,15 +20,15 @@ final class SbtDependencyAnalyzerConfigurable(project: Project) extends Searchab
 
   override def getHelpTopic: String = "default"
 
-  override def createComponent(): JComponent = panel.$$$getRootComponent$$$()
+  override def createComponent(): JComponent = panel.mainPanel
 
   override def isModified: Boolean = panel.isModified
 
   override def apply(): Unit = panel.apply()
 
-  override def reset(): Unit = panel.from()
+  override def reset(): Unit = panel.reset()
 
-  override def disposeUIResources(): Unit = {}
+  override def disposeUIResources(): Unit = { currentPanel = null }
 
   override def buildConfigurables(): Array[Configurable] = Array()
 }

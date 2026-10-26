@@ -16,20 +16,15 @@ import com.intellij.openapi.project.Project
 trait SbtShellOutputAnalysisTask[T]:
   private val LOG = Logger.getInstance(getClass)
 
-  protected final def getCommandOutputLines(project: Project, command: String): List[String] =
-    val shellCommunication       = SbtShellCommunication.forProject(project)
-    val executed: Future[String] = shellCommunication.command(command)
-    val res                      = Await.result(executed, Constants.TIMEOUT)
-    val result                   = res.split(Constants.LINE_SEPARATOR).toList.filter(_.startsWith("[info]"))
-    if (result.isEmpty) {
-      LOG.warn("Sbt Dependency Analyzer cannot find any output lines")
-    }
-    // see https://github.com/JetBrains/intellij-scala/blob/idea232.x/sbt/sbt-impl/src/org/jetbrains/sbt/shell/communication.scala
-    // 1 second between multiple commands
-    waitInterval()
+  protected final def getCommandOutput(project: Project, command: String): String = {
+    val output = SbtTaskRunner.await(project, SbtShellCommunication.forProject(project).command(command))
+    val errors = output.linesIterator.filter(_.startsWith("[error]")).toList
+    if (errors.nonEmpty) throw new IllegalStateException(errors.mkString("\n"))
+    output
+  }
 
-    result
-  end getCommandOutputLines
+  protected final def getCommandOutputLines(project: Project, command: String): List[String] =
+    getCommandOutput(project, command).linesIterator.filter(_.startsWith("[info]")).toList
 
   def executeCommand(project: Project): T
 

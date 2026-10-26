@@ -1,0 +1,342 @@
+package bitlap.sbt.analyzer
+
+import java.nio.file.{ Files, Path }
+import java.util.List as JList
+import javax.swing.*
+
+import scala.jdk.CollectionConverters.*
+
+import bitlap.sbt.analyzer.parsing.DependencyDeclaration
+import bitlap.sbt.analyzer.util.packagesearch.DependencyEditPlan
+
+import org.jetbrains.plugins.scala.ScalaFileType
+import org.jetbrains.plugins.scala.lang.psi.api.expr.ScInfixExpr
+
+import com.intellij.buildsystem.model.unified.UnifiedCoordinates
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.application.{ ApplicationManager, ApplicationStarter }
+import com.intellij.openapi.project.ProjectManager
+import com.intellij.psi.{ PsiDocumentManager, PsiFileFactory }
+import com.intellij.psi.util.PsiTreeUtil
+
+/** Loaded only by the separate smoke-test plugin, never shipped in the production plugin. */
+class AnalyzerSmokeStarter extends ApplicationStarter {
+
+  override def main(args: JList[String]): Unit = {
+    val output = Path.of(System.getProperty("analyzer.smoke.output"))
+    Files.createDirectories(output)
+    val results                                  = new StringBuilder()
+    def check(name: String)(body: => Unit): Unit = {
+      val start = System.nanoTime()
+      body
+      results.append(f"PASS $name ${(System.nanoTime() - start) / 1000000.0}%.2f ms\n")
+    }
+    try {
+      val projectPath =
+        Files.createTempDirectory(Path.of(System.getProperty("idea.system.path")), "regression-project-")
+      val project = com.intellij.openapi.project.ex.ProjectManagerEx.getInstanceEx.openProject(
+        projectPath,
+        com.intellij.ide.impl.OpenProjectTask.build().asNewProject().withProjectName("Analyzer regression")
+      )
+      require(project != null, "Cannot create isolated regression project")
+      check("registered menus") {
+        Seq(
+          "Sbt.ViewDependencyAnalyzer",
+          "Sbt.ToolbarDependencyAnalyzer",
+          "Sbt.ProjectViewDependencyAnalyzer",
+          "Sbt.DependencyAnalyzer.OpenConfig",
+          "Sbt.DependencyAnalyzer.ExcludeDependency",
+          "Sbt.DependencyAnalyzer.GoTo",
+          "Sbt.DependencyAnalyzer.RefreshDependencies",
+          "Sbt.DependencyAnalyzer.RefreshSnapshotDependencies"
+        ).foreach { id =>
+          assert(ActionManager.getInstance().getAction(id) != null, id)
+        }
+      }
+      check("settings validation and screenshot") {
+        val panel = new SbtDependencyAnalyzerPanel(project)
+        assert(!panel.isModified)
+        panel.fileCache.setText("-1")
+        try { panel.apply(); throw new AssertionError("negative timeout accepted") }
+        catch { case _: com.intellij.openapi.options.ConfigurationException => () }
+        assert(SettingsState.getSettings(project).fileCacheTimeout == 3600)
+        panel.reset()
+        paint(panel.mainPanel, output.resolve("settings.png"), 850, 260)
+      }
+      check("project cache invalidation deletes tracked DOT files without an editor") {
+        val file = Files.createTempFile(Path.of(System.getProperty("idea.system.path")), "closed-editor-cache-", ".dot")
+        Files.writeString(file, "digraph {}")
+        val cache = bitlap.sbt.analyzer.parsing.AnalyzerCacheService.getInstance(project)
+        cache.trackAnalysisFile(file.toString)
+        cache.invalidateAnalysisFiles()
+        assert(!Files.exists(file))
+      }
+      check("analyzer view constructs and disposes its menus and background lifecycle") {
+        val disposable = com.intellij.openapi.util.Disposer.newDisposable()
+        try {
+          val view = new bitlap.sbt.analyzer.jbexternal.DependencyAnalyzerViewImpl(
+            project,
+            org.jetbrains.sbt.project.SbtProjectSystem.Id,
+            disposable
+          )
+          paint(view.createComponent(), output.resolve("analyzer.png"), 1200, 650)
+        } finally com.intellij.openapi.util.Disposer.dispose(disposable)
+      }
+      val first  = "\"g\" % \"a\" % \"1\" % Test"
+      val second = "\"g\" % \"a\" % \"1\""
+      val source = s"libraryDependencies ++= Seq(\n  $first,\n  $second\n)"
+      def declaration(text: String, target: String): DependencyDeclaration = {
+        val directory = Path.of(System.getProperty("idea.system.path"), "fixtures")
+        Files.createDirectories(directory)
+        val path = Files.createTempFile(directory, "dependency-edit-", ".sbt")
+        Files.writeString(path, text)
+        val virtualFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
+        val file        = com.intellij.psi.PsiManager.getInstance(project).findFile(virtualFile)
+        val expr = PsiTreeUtil.findChildrenOfType(file, classOf[ScInfixExpr]).asScala.find(_.getText == target).get
+        DependencyDeclaration((expr, "Test", expr))
+      }
+      check("removal targets one exact scope and keeps valid comma syntax") {
+        val plan =
+          DependencyEditPlan.prepare(project, declaration(source, first), new UnifiedCoordinates("g", "a", "1"), true)
+        assert(plan.after.contains(second) && !plan.after.contains("Test") && !plan.after.contains("Seq(,"))
+        plan.apply()
+        assert(
+          plan.declaration.expression.getElement == null || !plan.declaration.expression.getElement.getText
+            .contains("Test")
+        )
+      }
+      check("exclusion changes only the selected declaration") {
+        val plan = DependencyEditPlan.prepare(
+          project,
+          declaration(source, first),
+          new UnifiedCoordinates("transitive", "child", "2"),
+          false
+        )
+        assert(plan.after.contains(s"($first).exclude(\"transitive\", \"child\")"))
+        assert(plan.after.contains(second))
+        paint(DependencyEditPlan.previewComponent(plan), output.resolve("dependency-edit.png"), 1200, 300)
+      }
+      check("stale edit preview cannot overwrite a newer document") {
+        val d        = declaration(source, first)
+        val plan     = DependencyEditPlan.prepare(project, d, new UnifiedCoordinates("g", "a", "1"), true)
+        val document = PsiDocumentManager.getInstance(project).getDocument(d.expression.getElement.getContainingFile)
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(
+          project,
+          new Runnable {
+            override def run(): Unit = document.insertString(0, "// concurrent edit\n")
+          }
+        )
+        try { plan.apply(); throw new AssertionError("stale preview applied") }
+        catch { case _: IllegalArgumentException => () }
+      }
+      // PSI regression cases execute in the real Scala plugin, rather than mocked syntax trees.
+      import bitlap.sbt.analyzer.parsing.{ SbtDeclarationResolver, SbtProjectResolver }
+      import org.jetbrains.plugins.scala.lang.psi.api.ScalaFile
+      import org.jetbrains.plugins.scala.lang.psi.api.statements.ScPatternDefinition
+      def fixture(text: String): ScalaFile = {
+        val directory = Path.of(System.getProperty("idea.system.path"), "fixtures")
+        Files.createDirectories(directory)
+        val path = Files.createTempFile(directory, "declaration-", ".sbt")
+        Files.writeString(path, text)
+        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
+        com.intellij.psi.PsiManager.getInstance(project).findFile(vf).asInstanceOf[ScalaFile]
+      }
+      def entries(text: String): Seq[SbtDeclarationResolver.Entry] = {
+        val file = fixture(text)
+        file.getChildren.toSeq.collect { case i: ScInfixExpr => i }.flatMap(SbtDeclarationResolver.dependencies(_))
+      }
+      def pointer(entry: SbtDeclarationResolver.Entry): DependencyDeclaration = {
+        val manager = com.intellij.psi.SmartPointerManager.getInstance(project)
+        DependencyDeclaration(
+          manager.createSmartPsiElementPointer(entry.core),
+          entry.scope,
+          manager.createSmartPsiElementPointer(entry.site),
+          entry.editable,
+          entry.cross
+        )
+      }
+      Seq("%", "%%", "%%%").foreach { cross =>
+        check(s"PSI coordinates $cross retain percent characters in literals") {
+          val found = entries(s"libraryDependencies += \"group%name\" $cross \"lib_core\" % \"1%2\"")
+          assert(found.size == 1, found.toString)
+          assert(found.head.group == "group%name" && found.head.artifact == "lib_core" && found.head.version == "1%2")
+          assert(found.head.cross == cross)
+        }
+      }
+      check("PSI resolves separate group artifact version and configuration vals") {
+        val found = entries("""val group = "g"
+          |val artifact = "a"
+          |val version = "1" + ".2"
+          |val scope = "test->test"
+          |libraryDependencies += group %% artifact % version % scope""".stripMargin)
+        assert(found.size == 1, found.toString)
+        assert(
+          found.head.group == "g" && found.head.artifact == "a" && found.head.version == "1.2" && found.head.scope == "test->test"
+        )
+      }
+      check("PSI modifier arguments do not leak into coordinates") {
+        val found = entries(
+          """libraryDependencies += ("g" %% "a" % "1" % Test).exclude("other", "child").classifier("tests").cross(CrossVersion.for3Use2_13)"""
+        )
+        assert(found.size == 1 && found.head.group == "g" && found.head.version == "1" && found.head.scope == "test")
+        assert(found.head.site.getText.endsWith("cross(CrossVersion.for3Use2_13)"))
+      }
+      check("PSI traverses typed sequences concatenation and result blocks") {
+        val found = entries(
+          """libraryDependencies ++= Seq[ModuleID]("g" % "a" % "1") ++ List(("g" % "b" % "2")) ++ { val v = "3"; Seq("g" % "c" % v) }"""
+        )
+        assert(found.map(_.artifact) == Seq("a", "b", "c"), found.toString)
+      }
+      check("PSI scoped libraryDependencies inherit the configuration") {
+        val found = entries("""Test / libraryDependencies += "g" % "a" % "1"""")
+        assert(found.size == 1 && found.head.scope == "test", found.toString)
+      }
+      check("PSI alias removal edits the use rather than shared ModuleID definition") {
+        val text = """val dep = "g" %% "a" % "1"
+          |libraryDependencies ++= Seq(dep % Test, dep)""".stripMargin
+        val found = entries(text)
+        assert(found.size == 2 && found.map(_.scope) == Seq("test", "compile"), found.toString)
+        val plan =
+          DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("g", "a_3", "1"), true)
+        assert(
+          plan.after.contains("val dep =") && !plan.after.contains("dep % Test") && plan.after.contains("Seq( dep)")
+        )
+      }
+      check("PSI shared dependency sequences remain navigable and cannot be accidentally edited") {
+        val found = entries("""val shared = Seq("g" % "a" % "1")
+          |libraryDependencies ++= shared""".stripMargin)
+        assert(found.size == 1 && !found.head.editable)
+        try {
+          DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("g", "a", "1"), false)
+          throw new AssertionError("shared sequence was edited")
+        } catch { case _: IllegalArgumentException => () }
+      }
+      check("PSI cyclic references terminate and computed expressions are not guessed") {
+        assert(entries("""val a = b
+          |val b = a
+          |libraryDependencies ++= a""".stripMargin).isEmpty)
+        assert(entries("""libraryDependencies += custom("g", "a", "1")""").isEmpty)
+      }
+      check("PSI exclusion preserves configuration and chained modifiers") {
+        val found = entries("""libraryDependencies += ("g" % "a" % "1" % Test).classifier("tests")""").head
+        val plan  =
+          DependencyEditPlan.prepare(project, pointer(found), new UnifiedCoordinates("t", "child_sjs1_3", "2"), false)
+        assert(plan.after.contains(".classifier(\"tests\")).exclude(\"t\", \"child_sjs1_3\")"))
+        assert(!PsiTreeUtil.hasErrorElements(fixture(plan.after)))
+      }
+      check("PSI removal skips comments to remove the correct comma") {
+        val found = entries("""libraryDependencies ++= Seq(("g" % "a" % "1"), /* keep comment */ "g" % "b" % "2")""")
+        val plan = DependencyEditPlan.prepare(project, pointer(found.head), new UnifiedCoordinates("g", "a", "1"), true)
+        assert(!PsiTreeUtil.hasErrorElements(fixture(plan.after)), plan.after)
+        assert(plan.after.contains("keep comment") && plan.after.contains("\"b\""))
+      }
+      check("PSI direct removal in settings removes its separator") {
+        Seq(
+          "libraryDependencies += \"g\" % \"a\" % \"1\", name := \"keep\"",
+          "name := \"keep\", libraryDependencies += \"g\" % \"a\" % \"1\""
+        ).foreach { settings =>
+          val file  = fixture("lazy val root = project.settings(" + settings + ")")
+          val root  = file.getChildren.toSeq.collect { case p: ScPatternDefinition => p }.head
+          val found = SbtProjectResolver.settings(root, "jvm").flatMap(SbtDeclarationResolver.dependencies(_)).head
+          val plan  = DependencyEditPlan.prepare(project, pointer(found), new UnifiedCoordinates("g", "a", "1"), true)
+          assert(!PsiTreeUtil.hasErrorElements(fixture(plan.after)), plan.after)
+          assert(plan.after.contains("keep") && !plan.after.contains("libraryDependencies"))
+        }
+      }
+      check("PSI legacy in scope and custom configurations are resolved") {
+        assert(entries("""libraryDependencies in Test += "g" % "a" % "1"""").head.scope == "test")
+        val found = entries("""val It = config("integration-test")
+          |libraryDependencies += "g" % "a" % "1" % It""".stripMargin)
+        assert(found.head.scope == "integration-test")
+        val scoped = entries("""val It = config("integration-test")
+          |It / libraryDependencies += "g" % "a" % "1"""".stripMargin)
+        assert(scoped.head.scope == "integration-test")
+      }
+      check("PSI project matching uses explicit ID and ignores names paths comments and dependency strings") {
+        val file = fixture("""lazy val alias = Project(id = "actual-id", base = file("other-directory"))
+          |  .settings(name := "published-name", moduleName := "artifact-name", libraryDependencies += "g" % "unrelated" % "1") // fake-id
+          |lazy val `another-project` = project.in(file("different-directory"))""".stripMargin)
+        val definitions = file.getChildren.toSeq.collect { case p: ScPatternDefinition => p }
+        assert(SbtProjectResolver.matches(definitions.head, "actual-id"))
+        Seq("alias", "other-directory", "published-name", "artifact-name", "unrelated", "fake-id").foreach(id =>
+          assert(!SbtProjectResolver.matches(definitions.head, id), id)
+        )
+        assert(
+          SbtProjectResolver.matches(definitions(1), "another-project"),
+          SbtProjectResolver.identity(definitions(1)).toString
+        )
+      }
+      check("PSI project scoped settings resolve project aliases and ThisBuild separately") {
+        val file = fixture("""lazy val alias = Project("actual-id", file("folder"))
+          |alias / Test / libraryDependencies += "g" % "a" % "1"
+          |ThisBuild / libraryDependencies += "g" % "global" % "1"
+          |libraryDependencies += "g" % "local" % "1"""".stripMargin)
+        val keys = file.getChildren.toSeq.collect { case i: ScInfixExpr => i.left }
+        assert(SbtProjectResolver.appliesTo(keys.head, "actual-id", false))
+        assert(!SbtProjectResolver.appliesTo(keys.head, "other", true))
+        assert(SbtProjectResolver.appliesTo(keys(1), "other", false))
+        assert(!SbtProjectResolver.appliesTo(keys(2), "other", false))
+        assert(SbtProjectResolver.appliesTo(keys(2), "other", true))
+        val assignment = file.getChildren.toSeq.collect { case i: ScInfixExpr => i }.head
+        assert(SbtDeclarationResolver.dependencies(assignment, Some("other")).isEmpty)
+        assert(SbtDeclarationResolver.dependencies(assignment, Some("actual-id")).head.scope == "test")
+      }
+      check("PSI platform settings include shared and only the selected platform") {
+        val file =
+          fixture("""lazy val core = crossProject(JSPlatform, JVMPlatform, NativePlatform).in(file("components/core"))
+          | .settings(libraryDependencies += "g" % "shared" % "1")
+          | .jvmSettings(libraryDependencies += "g" % "jvm" % "1")
+          | .jsSettings(libraryDependencies += "g" % "js" % "1")
+          | .nativeSettings(libraryDependencies += "g" % "native" % "1")
+          | .platformsSettings(JSPlatform, NativePlatform)(libraryDependencies += "g" % "multi" % "1")
+          |lazy val renamed = core.jvm.settings(libraryDependencies += "g" % "extra" % "1")""".stripMargin)
+        val definitions = file.getChildren.toSeq.collect { case p: ScPatternDefinition => p }
+        assert(!SbtProjectResolver.matches(definitions(1), "coreJS"))
+        assert(SbtProjectResolver.matches(definitions(1), "coreJVM"))
+        Seq("JVM", "JS", "Native").foreach(s => assert(SbtProjectResolver.matches(definitions.head, "core" + s)))
+        assert(!SbtProjectResolver.matches(definitions.head, "coreOther"))
+        Seq("jvm", "js", "native").foreach { platform =>
+          val found =
+            SbtProjectResolver.settings(definitions.head, platform).flatMap(SbtDeclarationResolver.dependencies(_))
+          val expected = Set("shared", platform) ++ (if (platform == "jvm") Set.empty[String] else Set("multi"))
+          assert(found.map(_.artifact).toSet == expected, found.toString)
+        }
+        val alias = SbtProjectResolver.settings(definitions(1), "jvm").flatMap(SbtDeclarationResolver.dependencies(_))
+        assert(alias.map(_.artifact).toSet == Set("shared", "jvm", "extra"), alias.toString)
+      }
+      check("PSI aggregate project arguments do not leak settings into the selected project") {
+        val file = fixture(
+          """lazy val other = project.settings(libraryDependencies += "g" % "other" % "1")
+          |lazy val root = project.aggregate(other).dependsOn(other).settings(libraryDependencies += "g" % "root" % "1")""".stripMargin
+        )
+        val root  = file.getChildren.toSeq.collect { case p: ScPatternDefinition => p }.last
+        val found = SbtProjectResolver.settings(root, "jvm").flatMap(SbtDeclarationResolver.dependencies(_))
+        assert(found.map(_.artifact) == Seq("root"), found.toString)
+      }
+      Files.writeString(output.resolve("smoke-results.txt"), results.toString)
+      println(results.toString)
+      System.exit(0)
+    } catch {
+      case error: Throwable =>
+        val stack = new java.io.StringWriter()
+        error.printStackTrace(new java.io.PrintWriter(stack))
+        Files.writeString(output.resolve("smoke-results.txt"), results.toString + stack.toString)
+        error.printStackTrace()
+        System.exit(1)
+    }
+  }
+
+  private def paint(component: JComponent, path: Path, width: Int, height: Int): Unit = {
+    component.setSize(width, height)
+    def layout(container: java.awt.Container): Unit = {
+      container.doLayout()
+      container.getComponents.collect { case c: java.awt.Container => c }.foreach(layout)
+    }
+    layout(component)
+    val image    = new java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB)
+    val graphics = image.createGraphics()
+    component.printAll(graphics)
+    graphics.dispose()
+    javax.imageio.ImageIO.write(image, "png", path.toFile)
+  }
+}

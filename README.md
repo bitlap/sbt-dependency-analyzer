@@ -30,7 +30,6 @@ The Sbt Dependency Analyzer plugin provides powerful visual tools to help you un
 *   **Dependency Exclusion (Experimental)**:
     *   Select a *transitive* dependency to exclude it from a *user-defined* dependency.
     *   Select a *user-defined* dependency to remove it entirely.
-    *   *Available since plugin version `0.5.0-242.21829.142`.*
 
 ## 🛠️ Installation & Setup
 
@@ -40,9 +39,22 @@ The Sbt Dependency Analyzer plugin provides powerful visual tools to help you un
 
 ## 📖 Usage
 
-> **Default Keyboard Shortcut**: `Ctrl` + `Shift` + `L` (Windows/Linux) / `Command` + `Shift` + `L` (macOS)
+> **Default Keyboard Shortcut**: `Ctrl` + `Shift` + `L` (Windows/Linux) / `Ctrl` + `Shift` + `L` (macOS)
 
-Simply open your Sbt project in IntelliJ IDEA and use the shortcut to generate and view the dependency analysis.
+Open an imported sbt project and use the shortcut, the sbt tool-window toolbar, or **Analyze sbt Dependencies** in a module's context menu.
+
+| Operation | Behavior |
+| --- | --- |
+| Refresh Dependencies | Invalidates graph caches and regenerates DOT files without a full project import. |
+| Refresh Snapshot Dependencies | Updates the selected module's snapshots in the background and removes only the temporary session settings introduced by the action. |
+| Go to Dependency | Navigates to an unambiguous declaration matching coordinates, version and scope. |
+| Remove Direct Dependency | Previews removal of the selected direct declaration. |
+| Exclude from … | Previews exclusion of a transitive dependency from its direct parent declaration. |
+| Apply / Cancel | Applies the reviewed edit as one undoable command, or leaves the build unchanged. |
+
+Ambiguous edits require declaration selection. Shared/computed declarations that cannot be removed safely produce an explanation. After applying an edit, reload sbt when the IDE shows its build-change notification, then analyze again. File edits and sbt's loaded build are distinct states.
+
+Analysis runs in the background. Cancellation stops waiting; an already submitted sbt command can continue in the shell. Errors include a retry action. Module and scope selectors support Enter, and scope selection also supports Space.
 
 ![Dependency Analysis View](https://plugins.jetbrains.com/files/22427/screenshot_064531dc-a3fa-4a8e-9437-7e76defa1f48)
 *The interactive dependency graph provides a clear overview of your project's structure.*
@@ -53,11 +65,11 @@ Fine-tune the plugin's behavior and potentially speed up analysis via `Settings/
 
 <img src="./docs/settings.png" width="400" height="280" alt="Plugin Settings Panel" align="right" />
 
-*   **File Cache Timeout**: Adjust how long (in seconds) the plugin uses cached dependency graph files (`.dot`) before re-running the `dependencyDot` command. (Default: `3600`).
+*   **File Cache Timeout**: Adjust how long (in seconds) the plugin uses cached dependency graph files (`.dot`) before re-running the `dependencyDot` command. (Default: `3600`; `0` disables graph caching).
 *   **Organization**: Predefine your project's organization value here to avoid the plugin needing to query sbt for it.
 *   **Disable Scopes**: Improve analysis speed by disabling dependency scopes (e.g., `Test`, `Provided`) you are not interested in.
 
-These settings are stored per IntelliJ project in `.idea/bitlap.sbt.dependency.analyzer.xml`. Deleting this file will reset settings and clear the cache.
+These settings are stored per IntelliJ project in `.idea/bitlap.sbt.dependency.analyzer.xml`. Deleting this file resets persisted settings after reopening the project. Use **Refresh Dependencies** in the analyzer to invalidate dependency graphs immediately. In-memory caches belong to the project and are released when it closes.
 
 ## ❗ Troubleshooting
 
@@ -71,14 +83,18 @@ The plugin may fail to correctly parse inter-module dependencies if it cannot de
 *   **Solution**: Ensure the plugin knows your project's organization by either:
     1.  Setting the **Organization** value in the plugin's [settings](#settings).
     2.  Defining the `organization` setting in your `build.sbt` globally using `ThisBuild / organization` or `inThisBuild(...)`.
-> **Note**: Submodules not declared within the `dependsOn` clause of the root project will not be parsed.
+> **Note**: Imported modules are queried directly when missing from aggregated `moduleName` output, so `aggregate` / `dependsOn` membership is not required for module-name discovery.
+
+Independent linked builds must be opened in separate IDE projects: the Scala plugin supplies one active sbt shell per IDE project. The analyzer rejects a module from a different shell root instead of displaying another build’s graph.
 
 ## 🔍 Technical Details
 
-1. The plugin executes several sbt commands (`organization`, `moduleName`, `dependencyDot`, `reload`, `update`) to gather dependency information. Significant optimizations are in place to minimize the number and impact of these commands.
+1. The plugin executes several sbt commands (`organization`, `moduleName`, `dependencyDot`, `reload`, `update`) to gather dependency information. Direct edges are indexed once, node indices are local to each graph, and parsing uses a project-owned bounded cache validated against file metadata. Graph expansion stops with an explicit error above 512 levels or 100,000 dependency paths. JAR sizes are calculated on demand; totals count each resolved coordinate once, rather than counting duplicate paths.
 2. The plugin has replicated the Kotlin code from the [intellij-community](https://github.com/JetBrains/intellij-community) project on the UI and compiles it using the [kotlin-plugin](https://github.com/bitlap/kotlin-plugin).
 
 ## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for JDK setup, tests, benchmarks, sandbox launch, and release checks.
 
 Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests on [GitHub](https://github.com/bitlap/sbt-dependency-analyzer).
 
@@ -86,7 +102,7 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 
 **JetBrains Support**: This project is developed using JetBrains IntelliJ IDEA. We extend our gratitude to JetBrains for providing a free license, which significantly supports its development.
 
-<a href="www.jetbrains.com">
+<a href="https://www.jetbrains.com">
 <img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg?_gl=1*8f2ovk*_ga*NTY2NTA4Mzg1LjE2NzU3MzgzMTI.*_ga_9J976DJZ68*MTcwMzIwOTE4NS4xODUuMS4xNzAzMjA5NDYzLjI4LjAuMA..&_ga=2.177269094.2105719560.1703209186-566508385.1675738312" alt="IntelliJ IDEA logo.">
 </a>
 

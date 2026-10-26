@@ -41,20 +41,46 @@ object SbtUtils {
   /** sbt: com.softwaremill.sttp.shared:zio_3:1.3.7:jar
    */
   def getLibrarySize(project: Project, artifact: String): Long = {
-    val libraryTable = LibraryTablesRegistrar.getInstance.getLibraryTable(project)
-    val library      = libraryTable.getLibraryByName(s"sbt: $artifact:jar")
-    if (library == null) return 0
-    val vf = library.getFiles(OrderRootType.CLASSES)
-    if (vf != null) {
-      vf.headOption.map(_.getLength).getOrElse(0)
-    } else 0
+    if (project.isDisposed) return 0L
+    bitlap.sbt.analyzer.parsing.AnalyzerCacheService
+      .getInstance(project)
+      .librarySizes
+      .computeIfAbsent(
+        artifact,
+        _ => {
+          val libraryTable = LibraryTablesRegistrar.getInstance.getLibraryTable(project)
+          val library      = libraryTable.getLibraryByName(s"sbt: $artifact:jar")
+          if (library == null) 0L
+          else {
+            val files = library.getFiles(OrderRootType.CLASSES)
+            files.toList
+              .map(f =>
+                Option(com.intellij.openapi.vfs.JarFileSystem.getInstance().getVirtualFileForJar(f)).getOrElse(f)
+              )
+              .filterNot(_.isDirectory)
+              .distinct
+              .map(_.getLength)
+              .sum
+          }
+        }
+      )
+      .longValue()
   }
 
+  /** Unique resolved artifacts, including the supplied roots. O(V+E), with no recursive stack. */
   def getLibraryTotalSize(project: Project, ds: List[DependencyNode]): Long = {
-    if (ds.isEmpty) return 0L
-    ds.map(d =>
-      getLibrarySize(project, d.getDisplayName) + getLibraryTotalSize(project, d.getDependencies.asScala.toList)
-    ).sum
+    val seen    = scala.collection.mutable.HashSet.empty[String]
+    val pending = scala.collection.mutable.ArrayDeque.from(ds)
+    var total   = 0L
+    while (pending.nonEmpty) {
+      com.intellij.openapi.progress.ProgressManager.checkCanceled()
+      val node = pending.removeLast()
+      if (node.getSelectionReason != "Evicted By" && seen.add(node.getDisplayName)) {
+        total += getLibrarySize(project, node.getDisplayName)
+        pending.appendAll(node.getDependencies.asScala)
+      }
+    }
+    total
   }
 
   def getSbtProject(project: Project): SbtSettings = SSbtUtil.sbtSettings(project)
@@ -73,10 +99,10 @@ object SbtUtils {
     val interval  = 100.millis
     val startTime = System.currentTimeMillis()
     val endTime   = startTime + timeout.toMillis
-    while (System.currentTimeMillis() < endTime && !SbtUtils.isProjectReady(project)) {
+    while (!project.isDisposed && System.currentTimeMillis() < endTime && !SbtUtils.isProjectReady(project)) {
       waitInterval(interval)
     }
-    true
+    !project.isDisposed && isProjectReady(project)
   }
 
   // TODO

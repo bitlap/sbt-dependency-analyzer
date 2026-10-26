@@ -48,7 +48,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
     val dependencyPlaces = inReadAction(for {
       sbtFile <- sbtFileOpt
       psiSbtFile    = PsiManager.getInstance(project).findFile(sbtFile).asInstanceOf[ScalaFile]
-      sbtFileModule = psiSbtFile.module.orNull
+      sbtFileModule = psiSbtFile.module.getOrElse(null)
       topLevelPlace =
         if (
           sbtFileModule != null && (sbtFileModule == module || sbtFileModule.getName == s"""${module.getName}-build""")
@@ -93,8 +93,8 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
         project,
         module,
         currentDependency,
-        configurationRequired = false,
-        versionRequired = false
+        configurationRequired = true,
+        versionRequired = true
       )
     if (targetedLibDepTuple == null) return
     val oldLibDep = SbtDependencyUtils.processLibraryDependencyFromExprAndString(targetedLibDepTuple, preserve = true)
@@ -167,8 +167,8 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
         project,
         module,
         toRemoveDependency,
-        configurationRequired = false,
-        versionRequired = false
+        configurationRequired = true,
+        versionRequired = true
       )
     if (targetedLibDepTuple == null) {
       throw AnalyzerCommandNotFoundException("The target dependency is missing.")
@@ -204,7 +204,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
     implicit val project: Project = module.getProject
     val sbtFileOpt                = SbtDependencyUtils.getSbtFileOpt(module)
     if (sbtFileOpt == null) return
-    val sbtFile = sbtFileOpt.orNull
+    val sbtFile = sbtFileOpt.getOrElse(null)
     if (sbtFile == null) return
     val psiSbtFile = PsiManager.getInstance(project).findFile(sbtFile).asInstanceOf[ScalaFile]
 
@@ -248,8 +248,8 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
         project,
         module,
         currentDependency,
-        configurationRequired = false,
-        versionRequired = false
+        configurationRequired = true,
+        versionRequired = true
       )
     if (targetedLibDepTuple == null) return false
     // add `(expr).exclude('group', 'artifact')`

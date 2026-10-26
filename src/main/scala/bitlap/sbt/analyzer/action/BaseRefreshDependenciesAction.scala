@@ -29,10 +29,16 @@ abstract class BaseRefreshDependenciesAction extends DumbAwareAction() {
 
   override def update(e: AnActionEvent): Unit = {
     val project: Project = e.getProject
-    if (project == null) {
+    if (project == null || project.isDisposed) {
       e.getPresentation.setEnabled(false)
       return
     }
+    val selectedSystem = e.getData(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID)
+    if (selectedSystem != org.jetbrains.sbt.project.SbtProjectSystem.Id) {
+      e.getPresentation.setEnabledAndVisible(false)
+      return
+    }
+    e.getPresentation.setVisible(true)
     val systemIds: util.List[ProjectSystemId] = getSystemIds(e)
     if (systemIds.isEmpty) {
       e.getPresentation.setEnabled(false)
@@ -43,7 +49,8 @@ abstract class BaseRefreshDependenciesAction extends DumbAwareAction() {
     val processingManager: ExternalSystemProcessingManager =
       ApplicationManager.getApplication.getService(classOf[ExternalSystemProcessingManager])
     e.getPresentation.setEnabled(
-      !processingManager.hasTaskOfTypeInProgress(ExternalSystemTaskType.RESOLVE_PROJECT, project)
+      !bitlap.sbt.analyzer.task.SbtTaskRunner.getInstance(project).isRunning && !processingManager
+        .hasTaskOfTypeInProgress(ExternalSystemTaskType.RESOLVE_PROJECT, project)
     )
   }
 

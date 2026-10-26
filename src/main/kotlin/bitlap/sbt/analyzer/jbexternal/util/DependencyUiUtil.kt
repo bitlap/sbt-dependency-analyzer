@@ -40,7 +40,7 @@ internal fun Dependency.Data.getDisplayText(showGroupId: Boolean): @NlsSafe Stri
 }
 
 private fun SimpleColoredComponent.customizeCellRenderer(
-    group: DependencyGroup, showGroupId: Boolean, showSize: Boolean
+    group: DependencyGroup, showGroupId: Boolean, showSize: Boolean, onSizeReady: () -> Unit
 ) {
     icon = when {
         group.hasWarnings -> AllIcons.General.Warning
@@ -58,16 +58,17 @@ private fun SimpleColoredComponent.customizeCellRenderer(
     if (showSize) {
         when (group.data) {
             is SbtDAArtifact -> {
+                (group.data as SbtDAArtifact).loadSize(onSizeReady)
                 val selfSize = (group.data as SbtDAArtifact).size.formatAsFileSize
                 val total = (group.data as SbtDAArtifact).totalSize.formatAsFileSize
                 if (selfSize == total) {
                     // no child nodes
-                    if ((group.data as SbtDAArtifact).size.toInt() != 0) {
+                    if ((group.data as SbtDAArtifact).size != 0L) {
                         append(
                             " - ($selfSize)", GRAYED_ATTRIBUTES
                         )
                     }
-                } else if ((group.data as SbtDAArtifact).size.toInt() == 0) {
+                } else if ((group.data as SbtDAArtifact).size == 0L) {
                     // may have been evicted away by conflicts
                     append(
                         " - $total", GRAYED_ATTRIBUTES
@@ -196,7 +197,7 @@ internal open class UsagesTree(
         setCellRenderer(UsagesTreeRenderer(showGroupIdProperty, showSizeProperty))
         whenTreeChanged {
             invokeLater {
-                TreeUtil.expandAll(this)
+                TreeUtil.expand(this, 2)
             }
         }
     }
@@ -210,7 +211,7 @@ private class DependencyListRenderer(
         list: JList<out DependencyGroup>, value: DependencyGroup?, index: Int, selected: Boolean, hasFocus: Boolean
     ) {
         val group = value ?: return
-        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get())
+        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get()) { list.repaint() }
     }
 }
 
@@ -223,7 +224,7 @@ private class DependencyTreeRenderer(
     ) {
         val node = value as? DefaultMutableTreeNode ?: return
         val group = node.userObject as? DependencyGroup ?: return
-        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get())
+        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get()) { tree.repaint() }
     }
 }
 
@@ -236,7 +237,7 @@ private class UsagesTreeRenderer(
     ) {
         val node = value as? DefaultMutableTreeNode ?: return
         val group = node.userObject as? DependencyGroup ?: return
-        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get())
+        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get()) { tree.repaint() }
         val warning = group.warnings.firstOrNull()
         if (warning != null) {
             append(" ${warning.message}", SimpleTextAttributes.ERROR_ATTRIBUTES)

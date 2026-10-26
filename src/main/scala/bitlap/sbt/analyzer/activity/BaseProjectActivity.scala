@@ -13,7 +13,7 @@ abstract class BaseProjectActivity(private val runOnlyOnce: Boolean = false) ext
     if (
       ApplicationManager.getApplication.isUnitTestMode || (runOnlyOnce && !veryFirstProjectOpening) || project.isDisposed
     ) {
-      return continuation
+      return kotlin.Unit.INSTANCE
     }
 
     veryFirstProjectOpening = false
@@ -23,7 +23,7 @@ abstract class BaseProjectActivity(private val runOnlyOnce: Boolean = false) ext
       // If async operations are needed in the future, use coroutine with continuation.
       onRunActivity(project)
     }
-    continuation
+    kotlin.Unit.INSTANCE
   }
 
   private def onBeforeRunActivity(project: Project): Boolean = true

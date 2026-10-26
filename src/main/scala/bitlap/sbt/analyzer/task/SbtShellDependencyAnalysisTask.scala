@@ -40,17 +40,19 @@ trait SbtShellDependencyAnalysisTask:
     scope: DependencyScopeEnum
   )(buildNodeFunc: String => DependencyScopeNode): DependencyScopeNode = {
     val shellCommunication = SbtShellCommunication.forProject(project)
-    val moduleId           = moduleData.getId.split(" ")(0)
+    val moduleId           = sbtProjectId(project, moduleData)
     val promise            = Promise[Boolean]()
     val file               = moduleData.getLinkedExternalProjectPath + analysisFilePath(scope, dependencyGraphType)
 
-    val vfsFile = VfsUtil.findFile(Path.of(file), true)
-    if (vfsFile != null) {
-      val lastModified = vfsFile.getTimeStamp
-      if (lastModified > System.currentTimeMillis() - Constants.CACHE_TIMEOUT) {
-        return buildNodeFunc(file)
-      }
-    }
+    AnalyzerCacheService.getInstance(project).trackAnalysisFile(file)
+    val ttl  = SettingsState.getSettings(project).fileCacheTimeout.toLong * 1000
+    val path = Path.of(file)
+    if (
+      ttl > 0 && java.nio.file.Files.isRegularFile(path) &&
+      System.currentTimeMillis() - java.nio.file.Files.getLastModifiedTime(path).toMillis < ttl
+    )
+      return buildNodeFunc(file)
+    AnalyzerCacheService.getInstance(project).dotFiles.invalidateCache(file)
 
     val result = shellCommunication
       .command(
@@ -98,7 +100,7 @@ trait SbtShellDependencyAnalysisTask:
       )
       .flatMap(_ => promise.future)
 
-    Await.result(result, Constants.TIMEOUT)
+    SbtTaskRunner.await(project, result)
     buildNodeFunc(file)
   }
 

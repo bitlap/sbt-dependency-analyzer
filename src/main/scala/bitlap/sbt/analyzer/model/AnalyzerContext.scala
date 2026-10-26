@@ -9,5 +9,8 @@ final case class AnalyzerContext(
   organization: String,
   moduleNamePathsCache: Map[String, String] = Map.empty,
   moduleIdArtifactIdsCache: Map[String, String] = Map.empty, // sbt module name == sbt artifact name
-  isTest: Boolean = false
+  isTest: Boolean = false,
+  cacheTimeoutMillis: Long = bitlap.sbt.analyzer.Constants.CACHE_TIMEOUT,
+  dotCache: bitlap.sbt.analyzer.parsing.DotFileCache = bitlap.sbt.analyzer.parsing.DotFileCache,
+  modulePlatforms: Map[String, String] = Map.empty
 )

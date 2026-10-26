@@ -1,36 +1,49 @@
-package bitlap
-package sbt
-package analyzer
-package task
+package bitlap.sbt.analyzer.task
 
+import bitlap.sbt.analyzer.util.SbtUtils
+
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 
-import util.SbtUtils
+/** Only removes settings inserted by this action; existing user session settings remain intact. */
+final class RefreshSnapshotsTask extends SbtShellOutputAnalysisTask[Unit] {
+  override def executeCommand(project: Project): Unit = executeForModule(project, "")
 
-/** Handles the `set csrConfiguration;update` command to load fresh snapshot dependencies for the sbt shell environment.
- */
-final class RefreshSnapshotsTask extends SbtShellOutputAnalysisTask[Unit]:
-
-  override def executeCommand(project: Project): Unit =
-    val sbtVersion = SbtUtils.getSbtVersion(project)
-    // see https://www.scala-sbt.org/1.x/docs/Dependency-Management-Flow.html#Notes+on+SNAPSHOTs
-    if (sbtVersion.inRange(SbtUtils.least, SbtUtils.latest)) {
-      getCommandOutputLines(
-        project,
-        """
-          |set update / skip := false;
-          |set csrConfiguration := csrConfiguration.value.withTtl(Option(scala.concurrent.duration.DurationInt(0).seconds));
-          |update;
-          |""".stripMargin
-      )
-    } else {
-      getCommandOutputLines(
-        project,
-        """
-          |set update / skip := false;
-          |update;
-          |""".stripMargin
-      )
+  def executeForModule(project: Project, moduleId: String): Unit = {
+    val prefix                      = if (moduleId.isEmpty) "" else s"$moduleId / "
+    val escaped                     = moduleId.replace("\\", "\\\\").replace("\"", "\\\"")
+    val settingScope                = if (moduleId.isEmpty) "" else s"LocalProject(\"$escaped\") / "
+    def session(): Map[Int, String] = RefreshSnapshotsTask.sessionSettings(getCommandOutput(project, "session list"))
+    val before                      = session()
+    val settings                    = List(s"${settingScope}update / skip := false") ++
+      (if (SbtUtils.getSbtVersion(project).inRange(SbtUtils.least, SbtUtils.latest))
+         List(
+           s"${settingScope}csrConfiguration := (${settingScope}csrConfiguration).value.withTtl(Some(scala.concurrent.duration.Duration.Zero))"
+         )
+       else Nil)
+    try {
+      settings.foreach(setting => getCommandOutput(project, s"set $setting"))
+      getCommandOutput(project, s"${prefix}update")
+    } finally {
+      ProgressManager
+        .getInstance()
+        .executeNonCancelableSection(new Runnable {
+          override def run(): Unit = {
+            val added = session().filter { (index, text) => !before.contains(index) && settings.contains(text.trim) }
+            added.keys.toList.sorted.reverse.foreach(index => getCommandOutput(project, s"session remove $index"))
+          }
+        })
     }
+  }
+}
 
-end RefreshSnapshotsTask
+object RefreshSnapshotsTask {
+  private val Entry = """(?:\[info\]\s*)?(\d+)\.\s*(.*)""".r
+
+  private[analyzer] def sessionSettings(output: String): Map[Int, String] = output.linesIterator
+    .map(_.trim)
+    .collect { case Entry(index, text) =>
+      index.toInt -> text.trim
+    }
+    .toMap
+}

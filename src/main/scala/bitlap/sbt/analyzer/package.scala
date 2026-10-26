@@ -43,25 +43,18 @@ def getParentModule(
   project: Project,
   dependency: DependencyAnalyzerDependency
 ): (DependencyAnalyzerDependency, Module) = {
-  val parentData = dependency.getParent
-  if (parentData == null) return getRootModule(project, dependency, dependency)
-  dependency.getParent.getData match
-    case _: Data.Module =>
-      val data = dependency.getParent.getData.asInstanceOf[DependencyAnalyzerDependency.Data.Module]
-      dependency -> getModule(project, data)
-    case _ => getRootModule(project, dependency, dependency)
-}
-
-def getRootModule(
-  project: Project,
-  dependency: DependencyAnalyzerDependency,
-  parent: DependencyAnalyzerDependency
-): (DependencyAnalyzerDependency, Module) = {
-  parent.getData match
-    case _: Data.Module =>
-      val data = parent.getData.asInstanceOf[DependencyAnalyzerDependency.Data.Module]
-      dependency -> getModule(project, data)
-    case _ => getRootModule(project, parent, parent.getParent)
+  if (dependency == null) return null
+  var direct = dependency
+  var parent = dependency.getParent
+  while (parent != null) {
+    parent.getData match {
+      case data: Data.Module =>
+        val module = getModule(project, data)
+        return if (module == null) null else direct -> module
+      case _ => direct = parent; parent = parent.getParent
+    }
+  }
+  null
 }
 
 def getModule(project: Project, data: DependencyAnalyzerDependency.Data.Module): Module = {
@@ -89,10 +82,20 @@ def findModule(project: Project, projectPath: String): Module = {
   findModule(project, moduleNode.getData)
 }
 
+/** Resolve the imported sbt project reference; display/qualified IDEA names are intentionally ignored. */
+def sbtProjectId(project: Project, data: ModuleData): String = {
+  val module = findModule(project, data)
+  Option(module)
+    .flatMap(org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId)
+    .map(_.id)
+    .getOrElse(throw new IllegalArgumentException(s"No imported sbt project identity for ${data.getModuleName}"))
+}
+
 def waitInterval(sleep: Duration = Constants.INTERVAL_TIMEOUT): Unit = {
-  try {
-    Thread.sleep(sleep.toMillis)
-  } catch {
-    case _: Throwable =>
+  com.intellij.openapi.progress.ProgressManager.checkCanceled()
+  try Thread.sleep(sleep.toMillis)
+  catch {
+    case e: InterruptedException =>
+      Thread.currentThread().interrupt(); throw new com.intellij.openapi.progress.ProcessCanceledException(e)
   }
 }

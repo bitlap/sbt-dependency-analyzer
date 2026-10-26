@@ -8,7 +8,7 @@
 [![Version][badge:version]][plugin-versions]
 [![Downloads][badge:downloads]][plugin-homepage]
 
-<p align="center"><b>基于Intellij的IDE/Android Studio的Sbt 依赖分析器插件</b></p>
+<p align="center"><b>适用于 IntelliJ IDEA 及 Scala 插件的 Sbt 依赖分析器</b></p>
 
 
 [English](README.md) | 中文
@@ -30,7 +30,6 @@ Sbt 依赖分析器插件提供了强大的可视化工具，帮助您轻松理�
 *   **依赖排除（实验性功能）**：
     *   选择一个 *传递* 依赖项以从某个 *用户定义* 的依赖中排除它。
     *   选择一个 *用户定义* 的依赖项以移除该依赖本身。
-    *   *自插件版本 `0.5.0-242.21829.142` 起可用。*
 
 ## 🛠️ 安装与设置
 
@@ -40,9 +39,22 @@ Sbt 依赖分析器插件提供了强大的可视化工具，帮助您轻松理�
 
 ## 📖 使用方法
 
-> **默认键盘快捷键**：`Ctrl` + `Shift` + `L` (Windows/Linux) / `Command` + `Shift` + `L` (macOS)
+> **默认键盘快捷键**：`Ctrl` + `Shift` + `L` (Windows/Linux) / `Ctrl` + `Shift` + `L` (macOS)
 
-只需在 IntelliJ IDEA 中打开您的 Sbt 项目并使用快捷键即可生成和查看依赖分析。
+打开已导入的 sbt 项目，通过快捷键、sbt 工具窗口按钮，或模块右键菜单中的“分析 Sbt 依赖项”打开分析视图。
+
+| 操作 | 行为 |
+| --- | --- |
+| 刷新依赖项 | 清理依赖图缓存并重新生成 DOT，无需完整导入项目。 |
+| 刷新快照依赖项 | 后台更新当前模块的 SNAPSHOT，仅移除本次操作加入的临时 shell 设置。 |
+| 查看依赖项 | 根据坐标、版本和 Scope 跳转到唯一匹配的声明。 |
+| 删除直接依赖 | 预览删除选中的直接依赖声明。 |
+| 从 … 排除 | 预览从直接依赖中排除指定传递依赖。 |
+| 应用／取消 | 将预览修改作为一次可撤销命令应用，或保持文件不变。 |
+
+多个声明匹配时先选择目标；无法安全删除的共享或计算型声明会给出原因。应用修改后，请在 IDE 出现构建变更提示时重新加载 sbt，再执行分析。文件内容与 sbt 已加载的构建状态是两个独立状态。
+
+分析在后台执行，失败通知提供重试入口。取消会停止等待；已提交的 sbt 命令仍可能在 shell 中继续执行。模块、Scope 下拉框支持 Enter，Scope 还支持 Space。
 
 ![Dependency Analysis View](https://plugins.jetbrains.com/files/22427/screenshot_064531dc-a3fa-4a8e-9437-7e76defa1f48)
 
@@ -52,11 +64,11 @@ Sbt 依赖分析器插件提供了强大的可视化工具，帮助您轻松理�
 
 通过 `设置/偏好设置` > `工具` > `Sbt Dependency Analyzer` 微调插件行为并可能加速分析：
 
-*   **文件缓存超时**：调整插件在重新运行 `dependencyDot` 命令之前，使用缓存的依赖图文件 (`.dot`) 的时长（秒）。(默认：`3600`)。
+*   **文件缓存超时**：调整插件在重新运行 `dependencyDot` 命令之前，使用缓存的依赖图文件 (`.dot`) 的时长（秒）。(默认：`3600`；`0` 表示禁用依赖图缓存)。
 *   **组织（Organization）**：在此处预定义您项目的组织（organization）值，以避免插件需要向 sbt 查询。
 *   **禁用作用域（Scope）**：通过禁用您不感兴趣的依赖作用域（例如 `Test`, `Provided`）来提高分析速度。
 
-这些设置按 IntelliJ 项目存储在 `.idea/bitlap.sbt.dependency.analyzer.xml` 中。删除此文件将重置设置并清除缓存。
+这些设置按 IntelliJ 项目存储在 `.idea/bitlap.sbt.dependency.analyzer.xml` 中。删除此文件后重新打开项目会重置持久化设置。使用分析视图中的“刷新依赖项”立即使依赖图缓存失效；内存缓存随项目关闭释放。
 
 ## ❗ 故障排除
 
@@ -70,14 +82,18 @@ Sbt 依赖分析器插件提供了强大的可视化工具，帮助您轻松理�
 *   **解决方案**：通过以下任一方式确保插件知道您的项目组织：
     1.  在插件的[设置](#settings)中设置 **组织（Organization）** 值。
     2.  在您的 `build.sbt` 中使用 `ThisBuild / organization` 或 `inThisBuild(...)` 全局定义 `organization` 设置。
-> **注意**：未在根项目的 `dependsOn` 子句中声明的子模块将不会被解析。
+> **注意**：聚合的 `moduleName` 输出未包含的已导入模块会被单独查询，模块名识别不要求加入根项目的 `aggregate` 或 `dependsOn`。
+
+多个独立构建需要分别在不同 IDE 项目中打开：Scala 插件在一个 IDE 项目中提供一个活动 sbt shell。分析器会明确拒绝来自其他 shell 根目录的模块，避免误展示另一个构建的依赖图。
 
 ## 🔍 技术细节
 
-1. 插件执行多个 sbt 命令 (`organization`, `moduleName`, `dependencyDot`, `reload`, `update`) 来收集依赖信息。已实施重大优化以尽量减少这些命令的数量和影响。
+1. 插件执行多个 sbt 命令 (`organization`, `moduleName`, `dependencyDot`, `reload`, `update`) 来收集依赖信息。直接边只索引一次，节点编号按图分配；解析缓存按项目隔离并校验文件元数据。超过 512 层或 100,000 条展开路径时会明确报错。JAR 大小按需计算，总大小按已解析坐标去重，避免重复路径累计。
 2. 插件复制了 [intellij-community](https://github.com/JetBrains/intellij-community) 项目中的 Kotlin UI 代码，并使用 [kotlin-plugin](https://github.com/bitlap/kotlin-plugin) 进行编译。
 
 ## 🤝 贡献
+
+构建、测试、性能基准及发布检查见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 欢迎贡献！请随时在 [GitHub](https://github.com/bitlap/sbt-dependency-analyzer) 上提交问题、功能请求或拉取请求。
 
@@ -85,7 +101,7 @@ Sbt 依赖分析器插件提供了强大的可视化工具，帮助您轻松理�
 
 **JetBrains 支持**：此项目使用 JetBrains IntelliJ IDEA 开发。我们感谢 JetBrains 提供免费许可证，极大地支持了其开发。
 
-<a href="www.jetbrains.com">
+<a href="https://www.jetbrains.com">
 <img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg?_gl=1*8f2ovk*_ga*NTY2NTA4Mzg1LjE2NzU3MzgzMTI.*_ga_9J976DJZ68*MTcwMzIwOTE4NS4xODUuMS4xNzAzMjA5NDYzLjI4LjAuMA..&_ga=2.177269094.2105719560.1703209186-566508385.1675738312" alt="IntelliJ IDEA logo.">
 </a>
 

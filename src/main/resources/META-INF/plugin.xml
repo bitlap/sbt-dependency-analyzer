@@ -3,12 +3,12 @@
     <id>org.bitlap.sbtDependencyAnalyzer</id>
     <name>Sbt Dependency Analyzer</name>
     <!--  will be added by sbt plugin build  -->
-    <version>0.9.0-RC1</version>
+    <version>0.11.0</version>
     <vendor url="https://github.com/bitlap/sbt-dependency-analyzer" email="dreamylost@outlook.com">Bitlap
     </vendor>
     <!-- please see https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html for description -->
     <!-- old version support, see branch idea231.x   -->
-    <idea-version since-build="261.0"/>
+    <idea-version since-build="261.0" until-build="261.*"/>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lang</depends>
@@ -140,8 +140,9 @@
         <![CDATA[
             <h1>0.11.0</h1>
             <ul>
-                <li>Support IDEA 262.x .</li>
-                <li>Improve code .</li>
+                <li>Improve dependency graph performance, cache invalidation and cancellation.</li>
+                <li>Preview dependency edits and validate their declaration and scope.</li>
+                <li>Support IDEA 261.x; later platform versions require compatibility verification.</li>
             </ul>                
             <h1>0.10.0</h1>
             <ul>

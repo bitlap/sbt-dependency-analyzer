@@ -86,12 +86,12 @@ object Notifications {
       .setIcon(SbtDependencyAnalyzerIcons.ICON)
       .addAction(
         new NotificationAction(
-          SbtDependencyAnalyzerBundle.message("analyzer.notification.ok")
+          SbtDependencyAnalyzerBundle.message("analyzer.notification.reload")
         ) {
           override def actionPerformed(e: AnActionEvent, notification: Notification): Unit = {
-            inReadAction {
-              notification.expire()
-            }
+            notification.expire()
+            FileDocumentManager.getInstance().saveAllDocuments()
+            SbtUtils.forceRefreshProject(project)
 
           }
         }
@@ -194,40 +194,20 @@ object Notifications {
       .setTitle(title)
       .setImportant(true)
       .setIcon(SbtDependencyAnalyzerIcons.ICON)
-      .setListenerIfSupport(NotificationListener.URL_OPENING_LISTENER)
-    if (canBrowseInHTMLEditor) {
-      notification.whenExpired(() => WhatsNew.browse(version, project))
-    } else {
-      notification.addAction(
-        new DumbAwareAction(
-          SbtDependencyAnalyzerBundle.message("analyzer.notification.updated.gotoBrowser"),
-          null,
-          AllIcons.General.Web
-        ) {
-          override def actionPerformed(e: AnActionEvent): Unit =
-            notification.expire()
-            BrowserUtil.browse(WhatsNew.getReleaseNotes(version))
+
+    notification.addAction(
+      new DumbAwareAction(
+        SbtDependencyAnalyzerBundle.message("analyzer.notification.updated.gotoBrowser"),
+        null,
+        AllIcons.General.Web
+      ) {
+        override def actionPerformed(e: AnActionEvent): Unit = {
+          notification.expire()
+          WhatsNew.browse(version, project)
         }
-      )
-    }
-    notification.notify(project)
-    if (canBrowseInHTMLEditor && SbtUtils.untilProjectReady(project)) {
-      waitInterval(10.seconds)
-      notification.expire()
-    }
-  }
-
-  extension (notification: Notification) {
-
-    private def setListenerIfSupport(listener: NotificationListener): Notification = {
-      try {
-        org.joor.Reflect.on(notification).call("setListener", listener)
-      } catch {
-        case _: Throwable =>
-        // ignore
       }
-      notification
-    }
+    )
+    notification.notify(project)
   }
 
   extension (file: VirtualFile) {

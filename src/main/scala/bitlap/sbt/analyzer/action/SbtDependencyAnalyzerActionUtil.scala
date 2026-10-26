@@ -14,7 +14,8 @@ final case class ModifiableDependency(
   coordinates: UnifiedCoordinates,
   declaredDependency: Option[DeclaredDependency],
   candidateDeclaredDependencies: List[DeclaredDependency],
-  parentDependency: DependencyAnalyzerDependency
+  parentDependency: DependencyAnalyzerDependency,
+  navigationDeclarations: List[DeclaredDependency]
 )
 
 object SbtDependencyAnalyzerActionUtil {
@@ -30,19 +31,35 @@ object SbtDependencyAnalyzerActionUtil {
 
     val (parentDependency, module) = parentDependencyAndModule
 
-    val candidateDeclaredDependencies = DependencyUtils
-      .getDeclaredDependency(module)
-    val declaredDependency = candidateDeclaredDependencies.find(dc =>
-      // hard code, see SbtDependencyUtils#getLibraryDependenciesOrPlacesFromPsi
-      val artifactWithoutScala         = DependencyUtils.getArtifactWithoutScalaVersion(coordinates.getArtifactId)
-      val declaredArtifactWithoutScala = DependencyUtils.getArtifactWithoutScalaVersion(dc.getCoordinates.getArtifactId)
-      (dc.getCoordinates.getArtifactId == coordinates.getArtifactId || declaredArtifactWithoutScala == artifactWithoutScala ||
-        // maybe a fixed artifact
-        dc.getCoordinates.getVersion == artifactWithoutScala) &&
-        dc.getCoordinates.getGroupId == coordinates.getGroupId
+    if (module == null || module.isDisposed || com.intellij.openapi.project.DumbService.isDumb(project)) return null
+    val declarations = DependencyUtils.getDeclaredDependency(module)
+    def matches(dc: DeclaredDependency, target: UnifiedCoordinates, versionRequired: Boolean = true): Boolean = {
+      val c = dc.getCoordinates
+      target != null && DeclarationMatcher.matches(
+        c.getGroupId,
+        c.getArtifactId,
+        if (versionRequired) c.getVersion else target.getVersion,
+        dc.getUnifiedDependency.getScope,
+        target.getGroupId,
+        target.getArtifactId,
+        target.getVersion,
+        dependency.getScope.getName,
+        Option(dc.getDataContext.getData(bitlap.sbt.analyzer.parsing.DependencyDeclaration.Key)).fold("%")(_.cross)
+      )
+    }
+    val directCoordinates             = getUnifiedCoordinates(parentDependency)
+    val candidateDeclaredDependencies =
+      DeclarationMatcher.select(declarations)(matches(_, directCoordinates), matches(_, directCoordinates, false))
+    val selected = DeclarationMatcher.select(declarations)(matches(_, coordinates), matches(_, coordinates, false))
+    ModifiableDependency(
+      module,
+      coordinates,
+      selected match { case List(one) => Some(one); case _ => None },
+      candidateDeclaredDependencies,
+      parentDependency,
+      selected
     )
 
-    ModifiableDependency(module, coordinates, declaredDependency, candidateDeclaredDependencies, parentDependency)
   end getModifiableDependency
 
 }

@@ -1,51 +1,43 @@
-package bitlap
-package sbt
-package analyzer
-package action
-
-import scala.util.Try
+package bitlap.sbt.analyzer.action
 
 import bitlap.sbt.analyzer.*
+import bitlap.sbt.analyzer.parsing.DependencyDeclaration
 
 import org.jetbrains.sbt.project.SbtProjectSystem
 
 import com.intellij.ide.util.PsiNavigationSupport
 import com.intellij.openapi.actionSystem.*
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.dependency.analyzer.*
+import com.intellij.openapi.ui.Messages
 import com.intellij.pom.Navigatable
-import com.intellij.psi.PsiElement
 
-final class SbtDependencyAnalyzerGoToAction extends DependencyAnalyzerGoToAction(SbtProjectSystem.Id):
+final class SbtDependencyAnalyzerGoToAction extends DependencyAnalyzerGoToAction(SbtProjectSystem.Id) {
+  getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.gotoAction.text"))
 
-  getTemplatePresentation.setText(
-    SbtDependencyAnalyzerBundle.message("analyzer.action.gotoAction.text")
-  )
+  private def candidates(e: AnActionEvent): List[DependencyDeclaration] =
+    Option(SbtDependencyAnalyzerActionUtil.getModifiableDependency(e)).toList
+      .flatMap(_.navigationDeclarations)
+      .flatMap(d => Option(d.getDataContext.getData(DependencyDeclaration.Key)))
+      .filter(_.resolve.nonEmpty)
+      .distinctBy(_.expression.getElement)
 
-  private val LOG = Logger.getInstance(classOf[SbtDependencyAnalyzerGoToAction])
+  override def getNavigatable(e: AnActionEvent): Navigatable = candidates(e) match {
+    case List(one) => PsiNavigationSupport.getInstance().getDescriptor(one.expression.getElement)
+    case _         => null
+  }
 
-  // PsiNavigationSupport
-  override def getNavigatable(e: AnActionEvent): Navigatable =
-    Option(SbtDependencyAnalyzerActionUtil.getModifiableDependency(e))
-      .flatMap(_.declaredDependency)
-      .flatMap { dependency =>
-        Try {
-          // warn: this will always yield false since type com.intellij.psi.PsiElement and class Tuple3 are unrelated
-          // add asInstanceOf to fix it
-          val data = dependency.getDataContext.getData(CommonDataKeys.PSI_ELEMENT).asInstanceOf[AnyRef]
-          data match
-            case t: (_, _, _) =>
-              t._1 match
-                case element: PsiElement => Some(element)
-                case _                   => None
-            case _ => None
-        }.getOrElse {
-          LOG.error(s"Cannot get 'PSI_ELEMENT' as 'PsiElement' for ${dependency.getCoordinates}")
-          None
-        }
+  override def update(e: AnActionEvent): Unit = {
+    super.update(e)
+    e.getPresentation.setEnabled(candidates(e).nonEmpty)
+  }
+
+  override def actionPerformed(e: AnActionEvent): Unit = {
+    val declarations = candidates(e)
+    DeclarationChooser
+      .choose(e.getProject, e.getPresentation.getText, declarations)
+      .flatMap(_.resolve)
+      .foreach { (core, _, _) =>
+        PsiNavigationSupport.getInstance().getDescriptor(core).navigate(true)
       }
-      .map(psiElement => PsiNavigationSupport.getInstance().getDescriptor(psiElement))
-      .orNull
-  end getNavigatable
-
-end SbtDependencyAnalyzerGoToAction
+  }
+}
