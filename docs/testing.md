@@ -20,7 +20,7 @@ python3 tools/test-sbt-workflows.py
 | 菜单注册与上下文 | 列表、树、usages 三组注册；真实模块元数据到声明定位、菜单启用、传递依赖导航、多候选、右键换行和 DataSink | `AnalyzerSmokeStarterSourceActions`、`AnalyzerSmokeStarterCore` |
 | 声明修改 | 精确删除/排除、共享序列按坐标修改、倒序/重复/不同配置与交叉版本、原生只读 Diff 预览、未知/只读拒绝、跨文件过期保护、修改后重新定位、Undo/Redo | PSI 回归、`AnalyzerSmokeStarterCore` |
 | 设置 | 校验失败不部分写入、trim、应用/重置、只在改变时发布事件 | `AnalyzerRegressionSpec`、`AnalyzerSmokeStarterCore` |
-| 后台 sbt 任务 | 禁止 EDT 等待、成功/异常/取消传播、并发动作互斥、结束后恢复可执行 | `AnalyzerSmokeStarterCore` |
+| 后台 sbt 任务 | 禁止 EDT 等待、成功/异常/取消传播、并发动作互斥、结束后恢复可执行；隔离 ANY modality、真实默认 invokeAndWait/写操作/保存文档、拒绝 EDT/读锁及启动前取消/项目关闭 | `AnalyzerSmokeStarterCore` |
 | SNAPSHOT 刷新 | 成功/失败/取消均只清理本动作设置，保留已有 session；根项目/连字符项目 ID、部分设置失败、相同文本的用户设置、删除后编号移动、Coursier TTL 分支 | `AnalyzerSmokeStarterCore`、真实 sbt 夹具 |
 | 加载与重试 | 失败/取消结束 loading；后续成功恢复；过期版本和已关闭视图的结果被丢弃 | `AnalyzerSmokeStarterCore` |
 | 筛选与 usages | 大小写不敏感搜索、Scope、警告、连续输入采用最后条件，筛选树保留祖先，usages 保留各作用域路径 | `AnalyzerSmokeStarterUiFlows` |
@@ -34,11 +34,11 @@ python3 tools/test-sbt-workflows.py
 
 2026-10-26 本地验证通过：
 
-- `sbt test`：59 项，断言运行时间 2.120 秒（不含构建准备）。
-- `sbt psiTest`：70 项，检查体耗时合计 15.062 秒（不含构建准备及 IDE 启动）。
+- `sbt test`：59 项，断言运行时间 1.775 秒（不含构建准备）。
+- `sbt psiTest`：73 项，检查体耗时合计 11.560 秒（不含构建准备及 IDE 启动）。
 - 真实 sbt 夹具：通过，22.56 秒，涵盖共享列表重排和按坐标修改、RootProject、同名 ID、未聚合模块、七份 DOT、外部 Runtime 依赖和 session 清理，详见 [#144 修复记录](issue-144.md)。
 - `sbt check`、`git diff --check`、Python 语法及文档链接检查通过。
-- Plugin Verifier：Compatible，保留 19 处弃用、31 处实验性和 16 处内部 API 提示。
+- Plugin Verifier：Compatible，保留 19 处弃用、31 处实验性和 17 处内部 API 提示。
 
 ## 夹具和边界
 

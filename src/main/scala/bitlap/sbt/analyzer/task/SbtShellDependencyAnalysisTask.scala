@@ -55,51 +55,53 @@ trait SbtShellDependencyAnalysisTask:
       return buildNodeFunc(file)
     AnalyzerCacheService.getInstance(project).dotFiles.invalidateCache(file)
 
-    val result = shellCommunication
-      .command(
-        getScopedCommandKey(moduleId, scope, dependencyGraphType.cmd),
-        new StringBuilder(),
-        SbtShellCommunication.listenerAggregator {
-          case SbtShellCommunication.TaskComplete =>
-            if (!promise.isCompleted) {
-              promise.success(true)
-            }
-          case SbtShellCommunication.ErrorWaitForInput =>
-            if (!promise.isCompleted) {
-              promise.failure(
-                AnalyzerCommandUnknownException(
-                  dependencyGraphType.cmd,
-                  moduleId,
-                  scope,
-                  SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
+    val result = SbtTaskRunner.submit(project) {
+      shellCommunication
+        .command(
+          getScopedCommandKey(moduleId, scope, dependencyGraphType.cmd),
+          new StringBuilder(),
+          SbtShellCommunication.listenerAggregator {
+            case SbtShellCommunication.TaskComplete =>
+              if (!promise.isCompleted) {
+                promise.success(true)
+              }
+            case SbtShellCommunication.ErrorWaitForInput =>
+              if (!promise.isCompleted) {
+                promise.failure(
+                  AnalyzerCommandUnknownException(
+                    dependencyGraphType.cmd,
+                    moduleId,
+                    scope,
+                    SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
+                  )
                 )
-              )
-            }
-          case SbtShellCommunication.Output(line) =>
-            if (
-              line.startsWith(SbtShellDependencyAnalysisTask.ERROR_PREFIX) && line
-                .contains(dependencyGraphType.cmd) && !promise.isCompleted
-            ) {
-              promise.failure(
-                AnalyzerCommandNotFoundException(
-                  SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
+              }
+            case SbtShellCommunication.Output(line) =>
+              if (
+                line.startsWith(SbtShellDependencyAnalysisTask.ERROR_PREFIX) && line
+                  .contains(dependencyGraphType.cmd) && !promise.isCompleted
+              ) {
+                promise.failure(
+                  AnalyzerCommandNotFoundException(
+                    SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
+                  )
                 )
-              )
-            } else if (line.startsWith(SbtShellDependencyAnalysisTask.ERROR_PREFIX) && !promise.isCompleted) {
-              promise.failure(
-                AnalyzerCommandUnknownException(
-                  dependencyGraphType.cmd,
-                  moduleId,
-                  scope,
-                  SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
+              } else if (line.startsWith(SbtShellDependencyAnalysisTask.ERROR_PREFIX) && !promise.isCompleted) {
+                promise.failure(
+                  AnalyzerCommandUnknownException(
+                    dependencyGraphType.cmd,
+                    moduleId,
+                    scope,
+                    SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
+                  )
                 )
-              )
-            }
-          case _ =>
+              }
+            case _ =>
 
-        }
-      )
-      .flatMap(_ => promise.future)
+          }
+        )
+        .flatMap(_ => promise.future)
+    }
 
     SbtTaskRunner.await(project, result)
     buildNodeFunc(file)

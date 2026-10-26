@@ -248,6 +248,140 @@ object AnalyzerSmokeStarterCore {
     )
 
     check(
+      "shell startup isolates ANY modality and permits the Scala shell document-save callback",
+      () => {
+        val task = background {
+          val app      = ApplicationManager.getApplication
+          val progress = com.intellij.openapi.progress.ProgressManager.getInstance()
+          val caller   = new com.intellij.openapi.progress.EmptyProgressIndicator(
+            com.intellij.openapi.application.ModalityState.any()
+          )
+          progress.runProcess(
+            new Runnable {
+              override def run(): Unit = {
+                assert(
+                  com.intellij.openapi.application.ModalityState
+                    .defaultModalityState() == com.intellij.openapi.application.ModalityState.any()
+                )
+                app.invokeAndWait(() =>
+                  assert(
+                    !com.intellij.openapi.application.TransactionGuard
+                      .getInstance()
+                      .asInstanceOf[com.intellij.openapi.application.TransactionGuardImpl]
+                      .isWritingAllowed
+                  )
+                )
+                val result = SbtTaskRunner.submit(project) {
+                  assert(!app.isDispatchThread)
+                  assert(
+                    com.intellij.openapi.application.ModalityState
+                      .defaultModalityState() == com.intellij.openapi.application.ModalityState.nonModal()
+                  )
+                  // Matches Scala SbtProcessManager: default invokeAndWait, a write action, then saveAllDocuments.
+                  org.jetbrains.plugins.scala.extensions.invokeAndWait {
+                    assert(
+                      com.intellij.openapi.application.TransactionGuard
+                        .getInstance()
+                        .asInstanceOf[com.intellij.openapi.application.TransactionGuardImpl]
+                        .isWritingAllowed
+                    )
+                    app.runWriteAction(new Runnable {
+                      override def run(): Unit =
+                        com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments()
+                    })
+                  }
+                  Future.successful(17)
+                }
+                assert(SbtTaskRunner.await(project, result) == 17)
+                assert(caller.isRunning && !caller.isCanceled)
+                assert(
+                  com.intellij.openapi.application.ModalityState
+                    .defaultModalityState() == com.intellij.openapi.application.ModalityState.any()
+                )
+              }
+            },
+            caller
+          )
+        }
+        eventually("write-safe shell startup")(task.isDone)
+        task.get()
+      }
+    )
+
+    check(
+      "shell submission rejects EDT and read locks and forwards synchronous and asynchronous failures",
+      () => {
+        val called = new AtomicBoolean()
+        try {
+          SbtTaskRunner.submit(project) { called.set(true); Future.successful(1) };
+          throw new AssertionError("EDT submission accepted")
+        } catch { case _: IllegalArgumentException => () }
+        assert(!called.get())
+        val task = background {
+          ApplicationManager.getApplication.runReadAction(new Runnable {
+            override def run(): Unit = {
+              try {
+                SbtTaskRunner.submit(project) { called.set(true); Future.successful(1) };
+                throw new AssertionError("Read-locked submission accepted")
+              } catch { case _: IllegalArgumentException => () }
+            }
+          })
+          assert(!called.get())
+          val error = new IllegalStateException("Shell startup failed")
+          for (synchronous <- Seq(true, false)) {
+            val result = SbtTaskRunner.submit[Int](project) {
+              if (synchronous) throw error else Future.failed(error)
+            }
+            try { SbtTaskRunner.await(project, result); throw new AssertionError("Shell failure swallowed") }
+            catch { case caught: IllegalStateException => assert(caught eq error) }
+          }
+        }
+        eventually("shell submission guards")(task.isDone)
+        task.get()
+      }
+    )
+
+    check(
+      "shell submission preserves cancellation and skips disposed projects before starting the command",
+      () => {
+        val called = new AtomicBoolean()
+        val task   = background {
+          val caller = new com.intellij.openapi.progress.EmptyProgressIndicator(
+            com.intellij.openapi.application.ModalityState.any()
+          )
+          val pending = new AtomicReference[Future[Int]]()
+          com.intellij.openapi.progress.ProgressManager
+            .getInstance()
+            .runProcess(
+              new Runnable {
+                override def run(): Unit = {
+                  caller.cancel()
+                  pending.set(SbtTaskRunner.submit(project) { called.set(true); Future.successful(1) })
+                }
+              },
+              caller
+            )
+          try { SbtTaskRunner.await(project, pending.get()); throw new AssertionError("Cancellation swallowed") }
+          catch { case _: com.intellij.openapi.progress.ProcessCanceledException => () }
+          assert(!called.get())
+          val disposed = java.lang.reflect.Proxy
+            .newProxyInstance(
+              classOf[Project].getClassLoader,
+              Array(classOf[Project]),
+              (_, method, _) => if (method.getName == "isDisposed") java.lang.Boolean.TRUE else null
+            )
+            .asInstanceOf[Project]
+          val skipped = SbtTaskRunner.submit(disposed) { called.set(true); Future.successful(1) }
+          try { SbtTaskRunner.await(project, skipped); throw new AssertionError("Disposed project accepted") }
+          catch { case _: com.intellij.openapi.progress.ProcessCanceledException => () }
+          assert(!called.get())
+        }
+        eventually("shell startup cancellation and disposal")(task.isDone)
+        task.get()
+      }
+    )
+
+    check(
       "background task runner serializes actions and releases its gate after success error and cancellation",
       () => {
         val runner = SbtTaskRunner.getInstance(project)

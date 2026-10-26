@@ -2,7 +2,7 @@ package bitlap.sbt.analyzer.task
 
 import java.util.concurrent.atomic.AtomicBoolean
 
-import scala.concurrent.{ Await, Future }
+import scala.concurrent.{ Await, Future, Promise }
 import scala.concurrent.duration.*
 
 import bitlap.sbt.analyzer.{ Constants, SbtDependencyAnalyzerBundle }
@@ -47,6 +47,26 @@ final class SbtTaskRunner(project: Project) {
 
 object SbtTaskRunner {
   def getInstance(project: Project): SbtTaskRunner = project.getService(classOf[SbtTaskRunner])
+
+  /** Submits through an isolated non-modal worker before awaiting shell output. Startup may synchronously save
+   *  documents on the EDT; inheriting ANY modality from a UI callback would make that save write-unsafe.
+   */
+  def submit[T](project: Project)(command: => Future[T]): Future[T] = {
+    val result = Promise[T]()
+    bitlap.sbt.analyzer.jbexternal.SbtShellCommandExecutor
+      .submit(
+        project,
+        new java.util.concurrent.Callable[Future[T]] {
+          override def call(): Future[T] = command
+        }
+      )
+      .whenComplete((future, error) => {
+        if (error != null) result.tryFailure(error)
+        else result.completeWith(future)
+        ()
+      })
+    result.future
+  }
 
   /** Waits for a shell future outside the EDT, polling cancellation and project disposal until the task timeout.
    *  Canceling the wait does not guarantee cancellation of the command already submitted to sbt.

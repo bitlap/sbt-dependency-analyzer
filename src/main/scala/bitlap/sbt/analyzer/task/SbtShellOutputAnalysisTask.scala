@@ -18,7 +18,10 @@ trait SbtShellOutputAnalysisTask[T]:
   private val LOG = Logger.getInstance(getClass)
 
   protected final def getCommandOutput(project: Project, command: String): String = {
-    val output = SbtTaskRunner.await(project, SbtShellCommunication.forProject(project).command(command))
+    val output = SbtTaskRunner.await(
+      project,
+      SbtTaskRunner.submit(project)(SbtShellCommunication.forProject(project).command(command))
+    )
     val errors = output.linesIterator.filter(_.startsWith("[error]")).toList
     if (errors.nonEmpty) throw new IllegalStateException(errors.mkString("\n"))
     output
