@@ -27,7 +27,7 @@ for name, source in [("SbtDependencyAnalyzer", root / "target/plugin/SbtDependen
 info = json.loads((sdk / "product-info.json").read_text())
 launch = next(v for v in info["launch"] if v["os"] == {"darwin": "macOS", "linux": "Linux", "win32": "Windows"}[sys.platform])
 java = sdk / "jbr/Contents/Home/bin/java" if sys.platform == "darwin" else sdk / "jbr/bin/java"
-output = root / "docs/validation"
+output = work / "results"
 args = [str(java), "-Xmx2048m", "-Djava.awt.headless=true", "-Didea.platform.prefix=Idea",
         "-Djava.system.class.loader=com.intellij.util.lang.PathClassLoader", f"-Didea.home.path={sdk}",
         f"-Didea.config.path={work / 'config'}", f"-Didea.system.path={work / 'system'}", f"-Didea.log.path={work / 'log'}",

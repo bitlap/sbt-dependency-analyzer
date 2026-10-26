@@ -87,7 +87,7 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
           "IDE_HOME"         -> sdk.getAbsolutePath,
           "TEST_CLASSES_DIR" -> (Test / classDirectory).value.getAbsolutePath
         ).!
-      if (exitCode != 0) sys.error("Scala PSI/menu regression tests failed; see docs/validation/smoke-results.txt")
+      if (exitCode != 0) sys.error("Scala PSI/menu regression tests failed; see target/smoke/results/smoke-results.txt")
     },
     // The upstream runner does not validate the report itself. Use the exact installed Scala dependency offline.
     runPluginVerifier := {

@@ -59,13 +59,6 @@
 
 设置按 IDEA 项目保存。“刷新依赖项”会立即使图缓存失效，关闭项目会释放内存缓存。
 
-<details>
-<summary>查看设置面板</summary>
-
-![设置面板](docs/validation/settings.png)
-
-</details>
-
 ## 常见问题
 
 ### 修改后仍显示旧依赖
@@ -88,7 +81,7 @@
 
 ## 开发与验证
 
-构建、测试、沙盒启动及发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。性能测量、PSI 回归、截图及测试边界见 [验证记录](docs/validation/README.md)。
+构建、测试、沙盒启动及发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。性能测量、PSI 回归及测试边界见 [验证记录](docs/validation/README.md)。
 
 欢迎提交 [Issue](https://github.com/bitlap/sbt-dependency-analyzer/issues) 或 Pull Request。感谢 [JetBrains](https://www.jetbrains.com/) 提供开发工具支持。
 

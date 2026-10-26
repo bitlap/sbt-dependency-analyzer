@@ -59,13 +59,6 @@ Open `Settings/Preferences → Tools → Sbt Dependency Analyzer`:
 
 Settings are saved per IDEA project. **Refresh Dependencies** immediately invalidates graph caches; closing the project releases in-memory caches.
 
-<details>
-<summary>View the settings panel</summary>
-
-![Settings panel](docs/validation/settings.png)
-
-</details>
-
 ## Troubleshooting
 
 ### Edits are not reflected in the dependency tree
@@ -88,7 +81,7 @@ Wait for any active import or build to finish, then use `reload` or `compile` in
 
 ## Development and validation
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for builds, tests, sandbox launch and release instructions. The [validation record](docs/validation/README.md) contains performance measurements, PSI regression results, screenshots and test boundaries.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for builds, tests, sandbox launch and release instructions. The [validation record](docs/validation/README.md) contains performance measurements, PSI regression results and test boundaries.
 
 [Issues](https://github.com/bitlap/sbt-dependency-analyzer/issues) and pull requests are welcome. Thanks to [JetBrains](https://www.jetbrains.com/) for supporting development tools.
 
