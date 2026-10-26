@@ -145,11 +145,23 @@
     <change-notes>
         <![CDATA[
             <h1>0.11.0</h1>
+            <h2>Dependency analysis</h2>
             <ul>
-                <li>Improve dependency graph performance, cache invalidation and cancellation.</li>
-                <li>Preview dependency edits and validate their declaration and scope.</li>
-                <li>Support IDEA 261.x; later platform versions require compatibility verification.</li>
-            </ul>                
+                <li>Faster graph loading, responsive filtering and background JAR size calculation.</li>
+                <li>More accurate JVM, Scala.js and Native module matching, including external builds.</li>
+                <li>Reuse aggregated module names and query only missing projects.</li>
+            </ul>
+            <h2>Dependency actions</h2>
+            <ul>
+                <li>Improved navigation and editing for multi-module builds, custom project factories and conditional declarations.</li>
+                <li>Review changes in a native diff preview, with highlighting and Undo/Redo support.</li>
+                <li>Remove or exclude libraries by coordinates; project module dependencies remain read-only.</li>
+            </ul>
+            <h2>Updates and reliability</h2>
+            <ul>
+                <li>Release notes open in your browser, with an offline page when launching the browser fails.</li>
+                <li>Safer sbt shell startup, cancellation and refresh without losing existing session settings.</li>
+            </ul>
             <h1>0.10.0</h1>
             <ul>
                 <li>Support IDEA 261.x .</li>

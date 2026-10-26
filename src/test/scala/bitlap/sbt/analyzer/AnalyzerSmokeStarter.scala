@@ -84,6 +84,64 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         } finally { provider.disposeEditor(editor) }
         assert(!editor.isValid)
       }
+      check("bundled release notes adapt to light dark and narrow layouts without horizontal scrolling") {
+        val manager          = com.intellij.openapi.editor.colors.EditorColorsManager.getInstance()
+        val previous         = manager.getGlobalScheme
+        val previousLaf      = UIManager.getLookAndFeel
+        val previousDefaults = UIManager.getLookAndFeelDefaults.clone().asInstanceOf[javax.swing.UIDefaults]
+        val previousDark     = com.intellij.util.ui.UIUtil.isUnderDarcula
+        val themes           = com.intellij.ide.ui.laf.UiThemeProviderListManager.Companion
+          .getInstance()
+          .getLaFs()
+          .iterator()
+          .asScala
+          .toSeq
+        var installed = Option.empty[com.intellij.ide.ui.laf.UIThemeLookAndFeelInfo]
+        val file      = new activity.WhatsNewFile(
+          "What's New",
+          activity.WhatsNew.pageHtml(
+            "What’s new in Sbt Dependency Analyzer",
+            SbtDependencyAnalyzerPlugin.descriptor.getChangeNotes,
+            "https://github.com/bitlap/sbt-dependency-analyzer/releases/tag/v0.11.0",
+            "0.11.0"
+          )
+        )
+        val editor = new activity.WhatsNewEditor(file)
+        val pane   = editor.getPreferredFocusedComponent.asInstanceOf[JEditorPane]
+        val scroll = editor.getComponent.asInstanceOf[com.intellij.ui.components.JBScrollPane]
+        try {
+          for (label <- Seq("light", "dark")) {
+            installed.foreach(_.dispose())
+            UIManager.setLookAndFeel(new com.intellij.ide.ui.laf.darcula.DarculaLaf)
+            val theme = themes
+              .find(t => t.isDark == (label == "dark"))
+              .getOrElse(throw new AssertionError(s"Missing $label theme: ${themes.map(_.getName)}"))
+            theme.installTheme(UIManager.getLookAndFeelDefaults)
+            theme.installEditorScheme(null)
+            installed = Some(theme)
+            com.intellij.ui.JBColor.setDark(label == "dark")
+            SwingUtilities.updateComponentTreeUI(scroll)
+            paint(scroll, output.resolve(s"whats-new-$label.png"), 1100, 780)
+            val brightness =
+              Seq(pane.getBackground.getRed, pane.getBackground.getGreen, pane.getBackground.getBlue).sum / 3
+            assert(if (label == "light") brightness > 127 else brightness < 127, s"$label: ${pane.getBackground}")
+            assert(pane.getWidth <= com.intellij.util.ui.JBUI.scale(760))
+            assert(!pane.getText.contains("0.10.0"))
+            paint(scroll, output.resolve(s"whats-new-$label-narrow.png"), 480, 780)
+            assert(scroll.getViewport.getView.getWidth == scroll.getViewport.getExtentSize.width)
+            assert(scroll.getHorizontalScrollBarPolicy == ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER)
+            assert(pane.getWidth > 0 && pane.getWidth < 480)
+          }
+        } finally {
+          editor.dispose()
+          installed.foreach(_.dispose())
+          UIManager.setLookAndFeel(previousLaf)
+          UIManager.getLookAndFeelDefaults.putAll(previousDefaults)
+          com.intellij.ui.JBColor.setDark(previousDark)
+          manager.setGlobalScheme(previous)
+        }
+        assert(!editor.isValid)
+      }
       check("registered menus") {
         Seq(
           "Sbt.ViewDependencyAnalyzer",

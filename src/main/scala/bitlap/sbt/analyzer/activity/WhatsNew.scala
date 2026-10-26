@@ -19,22 +19,50 @@ object WhatsNew {
 
   def getReleaseNotes(version: Version): String = ReleaseNotes + version.presentation
 
-  /** Uses the latest bundled change-note section as HTML, escaping the title and release URL. The bundled note body is
-   *  trusted plugin markup and is not HTML-escaped.
+  /** Renders only the newest release, including bundles where older release headings have no separator comment. Styling
+   *  contains layout only; the IDE HTML component supplies theme colors and fonts.
    */
-  private[analyzer] def pageHtml(title: String, notes: String, url: String): String = {
+  private[analyzer] def pageHtml(title: String, notes: String, url: String, version: String = ""): String = {
     def escape(text: String): String = text
       .replace("&", "&amp;")
       .replace("<", "&lt;")
       .replace(">", "&gt;")
       .replace("\"", "&quot;")
       .replace("'", "&#39;")
-    val latest =
-      Option(notes).getOrElse("").split(java.util.regex.Pattern.quote(Constants.CHANGE_NOTES_SEPARATOR), 2).head
-    s"""<!doctype html><html><head><meta charset="UTF-8"></head>
-       |<body style="font-family:sans-serif;margin:32px;line-height:1.6">
-       |<h1>${escape(title)}</h1>$latest
-       |<p><a href="${escape(url)}">${escape(url)}</a></p></body></html>""".stripMargin
+    val section = Option(notes)
+      .getOrElse("")
+      .split(java.util.regex.Pattern.quote(Constants.CHANGE_NOTES_SEPARATOR), 2)
+      .head
+    val releaseHeading = """(?is)<h1\b[^>]*>(.*?)</h1\s*>""".r
+    val first          = releaseHeading.findFirstMatchIn(section)
+    val body           = first.fold(section)(m => section.substring(m.end))
+    val latest         = releaseHeading.findFirstMatchIn(body).fold(body)(m => body.substring(0, m.start)).trim
+    val releaseVersion = Option(version)
+      .filter(_.nonEmpty)
+      .orElse(first.map(_.group(1).replaceAll("<[^>]*>", "").trim))
+      .filter(_.nonEmpty)
+    val versionHtml = releaseVersion.fold("")(v =>
+      s"<p class=\"version\">${escape(SbtDependencyAnalyzerBundle.message("analyzer.whatsNew.version", v))}</p>"
+    )
+    val content =
+      if (latest.nonEmpty) latest
+      else s"<p>${escape(SbtDependencyAnalyzerBundle.message("analyzer.whatsNew.empty"))}</p>"
+    s"""<!doctype html><html><head><meta charset="UTF-8">
+       |<style>
+       |body { margin: 0; font-weight: normal; line-height: 1.4; }
+       |h1 { font-size: 26px; margin: 0 0 8px 0; }
+       |h2 { font-size: 17px; margin: 18px 0 6px 0; }
+       |p.version { margin: 0 0 12px 0; }
+       |li { margin-bottom: 4px; }
+       |ul { margin: 4px 0 12px 0; padding-left: 22px; }
+       |p.release-link { margin: 28px 0 0 0; }
+       |</style></head><body>
+       |<h1>${escape(title)}</h1>$versionHtml
+       |$content
+       |<p class="release-link"><a href="${escape(url)}">${escape(
+        SbtDependencyAnalyzerBundle.message("analyzer.whatsNew.releaseLink")
+      )}</a></p>
+       |</body></html>""".stripMargin
   }
 
   /** Returns true only when FileEditorManager creates an editor for the bundled page. Call on the EDT. Disposed
@@ -43,7 +71,12 @@ object WhatsNew {
   private[analyzer] def openPage(version: Version, project: Project): Boolean = {
     if (project.isDisposed) return false
     val title = SbtDependencyAnalyzerBundle.message("analyzer.action.whatsNew.text", "Sbt Dependency Analyzer")
-    val html  = pageHtml(title, SbtDependencyAnalyzerPlugin.descriptor.getChangeNotes, getReleaseNotes(version))
+    val html  = pageHtml(
+      title,
+      SbtDependencyAnalyzerPlugin.descriptor.getChangeNotes,
+      getReleaseNotes(version),
+      version.presentation
+    )
     try {
       FileEditorManager.getInstance(project).openFile(new WhatsNewFile(title, html), true).nonEmpty
     } catch {

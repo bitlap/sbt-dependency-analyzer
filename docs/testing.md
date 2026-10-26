@@ -27,7 +27,7 @@ python3 tools/test-sbt-workflows.py
 | 筛选与 usages | 大小写不敏感搜索、Scope、警告、连续输入采用最后条件，筛选树保留祖先，usages 保留各作用域路径 | `AnalyzerSmokeStarterUiFlows` |
 | JAR 大小 | 真实 JAR 文件长度、共享/循环路径去重和淘汰跳过；后台计算、单次调度、EDT 回调、缓存命中、坐标相等性和 hash 不随大小改变 | `AnalyzerSmokeStarterUiFlows` |
 | 刷新事件与生命周期 | 设置/刷新事件清缓存、忽略其他项目、dispose 后监听断开、关闭视图不接受后台结果 | `AnalyzerSmokeStarterCore`、`AnalyzerSmokeStarterUiFlows` |
-| What’s New | 首次/升级/重复/降级、失败可重试、成功才记版本、浏览器优先、启动失败回退、异步请求去重、本地只读 HTML 渲染和释放 | `WhatsNewSpec`、IDE 回归 |
+| What’s New | 首次/升级/重复/降级、失败可重试、成功才记版本、浏览器优先、启动失败回退、异步请求去重、最新版本截取、只读主题化 HTML、宽/窄窗口与明暗配色渲染和释放 | `WhatsNewSpec`、IDE 回归 |
 | Scala 运行时兼容性 | 缺失/空/非空选择、工具栏状态传递；编译目录与插件 JAR 不含不兼容的 Option.orNull 调用 | `ScalaOptionCompatibilityChecks`、[字节码检查说明](scala-runtime-compatibility.md) |
 | 打包与兼容性 | 分发包逐字节包含全部生产类、排除测试辅助类，Plugin Verifier 验证目标 SDK | `PackagingRegressionSpec`、`runPluginVerifier` |
 
@@ -35,11 +35,11 @@ python3 tools/test-sbt-workflows.py
 
 2026-10-27 本地验证通过：
 
-- `sbt test`：71 项，断言运行时间 1.764 秒（不含构建准备）。
-- `sbt psiTest`：80 项，检查体耗时合计 12.735 秒（不含构建准备及 IDE 启动）。
+- `sbt test`：73 项，断言运行时间 1.597 秒（不含构建准备）。
+- `sbt psiTest`：81 项，检查体耗时合计 12.161 秒（不含构建准备及 IDE 启动）。
 - 真实 sbt 夹具：通过，27.55 秒，涵盖聚合 moduleName 批量结果复用、未聚合模块、跨平台同名、共享列表重排和按坐标修改、RootProject、同名 ID、未聚合模块、七份 DOT、外部 Runtime 依赖和 session 清理，详见 [#144 修复记录](issue-144.md)。
 - `sbt check`、`git diff --check`、Python 语法及文档链接检查通过。
-- Plugin Verifier：Compatible，保留 19 处弃用、31 处实验性和 17 处内部 API 提示。
+- Plugin Verifier：Compatible，保留 19 处弃用、45 处实验性和 17 处内部 API 提示。
 
 ## 夹具和边界
 
@@ -53,3 +53,5 @@ python3 tools/test-sbt-workflows.py
 - 补充实验使用本机 Circe 实际 `build.sbt` 的临时副本，六组模块/平台验证声明定位、可编辑状态、生成删除后的语法与再次解析，检查体耗时 2.912 秒；未修改 Circe 工程，亦不替代完整导入 UI 测试。
 
 - Remove / Exclude 仅接受外部库节点；直接或传递项目模块、缺失导入元数据及空白坐标均保持菜单可见但不可点击，并给出原因。回归同时直接调用禁用动作，确认不弹出编辑流程、不改变源码；编辑计划单独拒绝 null / 空白坐标，切回有效库依赖后动作恢复。
+
+- 内置更新说明使用真实 IDEA HTML 组件，隔离环境安装 IDE 自带明暗主题资源和编辑器配色，验证同一页面换肤、1100/480 像素宽度下的布局、无横向滚动及只读释放，并输出四份渲染图。此检查不等同于在用户正在使用的 IDE 中手动切换所有主题。
