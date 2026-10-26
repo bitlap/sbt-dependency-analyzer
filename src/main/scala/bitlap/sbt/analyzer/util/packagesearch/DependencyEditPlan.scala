@@ -72,6 +72,11 @@ object DependencyEditPlan {
     selected: UnifiedCoordinates,
     remove: Boolean
   ): DependencyEditPlan = {
+    require(
+      selected != null && Seq(selected.getGroupId, selected.getArtifactId, selected.getVersion)
+        .forall(value => value != null && value.trim.nonEmpty),
+      "Only external library dependencies with complete coordinates can be removed or excluded"
+    )
     require(declaration.editable, "This declaration is shared; edit its definition directly")
     declaration.resolve.getOrElse(throw new IllegalStateException("Declaration is no longer valid"))
     val expression =

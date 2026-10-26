@@ -18,7 +18,7 @@ python3 tools/test-sbt-workflows.py
 | 声明解析 | `%` / `%%` / `%%%`、常量/别名、Scope、修饰器、跨文件共享序列及物理源码导航、project/crossProject 设置归属、自定义工厂静态路径、条件依赖分支、循环终止 | `DeclarationMatcherSpec`、`AnalyzerSmokeStarter` |
 | 分析作用域 | Compile / Test / Provided 匹配；全部 8 种禁用组合控制 contributor | `DeclarationMatcherSpec`、`AnalyzerSmokeStarterUiFlows` |
 | 菜单注册与上下文 | 列表、树、usages 三组注册；真实模块元数据到声明定位、工厂创建的普通/跨平台模块与条件分支、菜单启用、传递依赖导航、多候选、右键换行和 DataSink | `AnalyzerSmokeStarterSourceActions`、`AnalyzerSmokeStarterCore` |
-| 声明修改 | 精确删除/排除、共享序列按坐标修改、倒序/重复/不同配置与交叉版本、原生只读 Diff 预览、未知/只读拒绝、跨文件过期保护、修改后重新定位、Undo/Redo | PSI 回归、`AnalyzerSmokeStarterCore` |
+| 声明修改 | 精确删除/排除、共享序列按坐标修改、倒序/重复/不同配置与交叉版本、原生只读 Diff 预览、项目模块节点禁用、空/不完整坐标拒绝、未知/只读拒绝、跨文件过期保护、修改后重新定位、Undo/Redo | PSI 回归、`AnalyzerSmokeStarterCore` |
 | 设置 | 校验失败不部分写入、trim、应用/重置、只在改变时发布事件 | `AnalyzerRegressionSpec`、`AnalyzerSmokeStarterCore` |
 | 后台 sbt 任务 | 禁止 EDT 等待、成功/异常/取消传播、并发动作互斥、结束后恢复可执行；隔离 ANY modality、真实默认 invokeAndWait/写操作/保存文档、拒绝 EDT/读锁及启动前取消/项目关闭 | `AnalyzerSmokeStarterCore` |
 | SNAPSHOT 刷新 | 成功/失败/取消均只清理本动作设置，保留已有 session；根项目/连字符项目 ID、部分设置失败、相同文本的用户设置、删除后编号移动、Coursier TTL 分支 | `AnalyzerSmokeStarterCore`、真实 sbt 夹具 |
@@ -34,8 +34,8 @@ python3 tools/test-sbt-workflows.py
 
 2026-10-26 本地验证通过：
 
-- `sbt test`：59 项，断言运行时间 1.930 秒（不含构建准备）。
-- `sbt psiTest`：79 项，检查体耗时合计 15.211 秒（不含构建准备及 IDE 启动）。
+- `sbt test`：59 项，断言运行时间 2.148 秒（不含构建准备）。
+- `sbt psiTest`：80 项，检查体耗时合计 23.517 秒（不含构建准备及 IDE 启动）。
 - 真实 sbt 夹具：通过，22.56 秒，涵盖共享列表重排和按坐标修改、RootProject、同名 ID、未聚合模块、七份 DOT、外部 Runtime 依赖和 session 清理，详见 [#144 修复记录](issue-144.md)。
 - `sbt check`、`git diff --check`、Python 语法及文档链接检查通过。
 - Plugin Verifier：Compatible，保留 19 处弃用、31 处实验性和 17 处内部 API 提示。
@@ -50,3 +50,5 @@ python3 tools/test-sbt-workflows.py
 
 - 自定义工厂回归使用导入的 sbt ID、构建 URI 和模块根目录匹配源码，覆盖链式辅助函数、命名参数、字符串插值及 JVM/JS/Native 目录；重复路径、递归和动态返回拒绝猜测。三个真实导入模型夹具验证动作启用、删除/排除、相邻模块保留、再次解析及 Undo/Redo。
 - 补充实验使用本机 Circe 实际 `build.sbt` 的临时副本，六组模块/平台验证声明定位、可编辑状态、生成删除后的语法与再次解析，检查体耗时 2.912 秒；未修改 Circe 工程，亦不替代完整导入 UI 测试。
+
+- Remove / Exclude 仅接受外部库节点；直接或传递项目模块、缺失导入元数据及空白坐标均保持菜单可见但不可点击，并给出原因。回归同时直接调用禁用动作，确认不弹出编辑流程、不改变源码；编辑计划单独拒绝 null / 空白坐标，切回有效库依赖后动作恢复。

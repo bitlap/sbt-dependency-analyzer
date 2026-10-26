@@ -24,13 +24,24 @@ final class SbtDependencyAnalyzerExcludeAction extends BaseRefreshDependenciesAc
       e.getPresentation.setEnabled(false)
       return
     }
+    if (
+      !SbtDependencyAnalyzerActionUtil.isEditableArtifact(
+        e.getData(
+          com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView.Companion.getDEPENDENCY
+        )
+      )
+    ) {
+      e.getPresentation.setEnabled(false)
+      e.getPresentation.setDescription(SbtDependencyAnalyzerBundle.message("analyzer.action.edit.libraryOnly"))
+      return
+    }
     if (com.intellij.openapi.project.DumbService.isDumb(e.getProject)) {
       e.getPresentation.setEnabled(false)
       e.getPresentation.setDescription(SbtDependencyAnalyzerBundle.message("analyzer.action.source.indexing"))
       return
     }
     if (e.getPresentation.isEnabled) {
-      val target = Option(SbtDependencyAnalyzerActionUtil.getModifiableDependency(e))
+      val target = Option(SbtDependencyAnalyzerActionUtil.getEditableDependency(e))
       e.getPresentation.setEnabled(
         target.exists(
           _.candidateDeclaredDependencies.exists(d =>
@@ -53,7 +64,7 @@ final class SbtDependencyAnalyzerExcludeAction extends BaseRefreshDependenciesAc
   }
 
   override def actionPerformed(e: AnActionEvent): Unit = {
-    val target = SbtDependencyAnalyzerActionUtil.getModifiableDependency(e)
+    val target = SbtDependencyAnalyzerActionUtil.getEditableDependency(e)
     if (target == null) return
     val project    = target.module.getProject
     val candidates =

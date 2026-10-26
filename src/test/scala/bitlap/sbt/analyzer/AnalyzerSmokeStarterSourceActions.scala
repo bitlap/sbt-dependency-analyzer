@@ -188,6 +188,67 @@ object AnalyzerSmokeStarterSourceActions {
             }
             val target = SbtDependencyAnalyzerActionUtil.getModifiableDependency(event(remove))
             assert(target.navigationDeclarations.size == 1 && target.candidateDeclaredDependencies.size == 1)
+            if (label == "direct")
+              check(
+                "library edits reject direct and transitive project modules and incomplete coordinates",
+                () => {
+                  val declaration = target.candidateDeclaredDependencies.head.getDataContext
+                    .getData(DependencyDeclaration.Key)
+                  val source        = declaration.expression.getElement.getContainingFile
+                  val before        = source.getText
+                  val projectModule = new DAModule("referenced-project")
+                  projectModule.putUserData(Module_Data, md)
+                  val malformed = Seq(
+                    new DAArtifact("", "a", "1"),
+                    new DAArtifact("g", "", "1"),
+                    new DAArtifact("g", "a", ""),
+                    new DAArtifact(" ", "a", "1"),
+                    new DAArtifact("g", " ", "1"),
+                    new DAArtifact("g", "a", " ")
+                  )
+                  val invalidNodes = Seq(
+                    rootDependency,
+                    new DADependency(projectModule, new DAScope(scope), rootDependency, java.util.List.of()),
+                    new DADependency(projectModule, new DAScope(scope), direct, java.util.List.of()),
+                    new DADependency(new DAModule("no-metadata"), new DAScope(scope), direct, java.util.List.of())
+                  ) ++ malformed.map(data => new DADependency(data, new DAScope(scope), direct, java.util.List.of()))
+                  val presentation = event(remove)
+                  invalidNodes.foreach { invalid =>
+                    selected = invalid
+                    remove.update(presentation)
+                    assert(presentation.getPresentation.isVisible && !presentation.getPresentation.isEnabled)
+                    assert(
+                      presentation.getPresentation.getDescription == SbtDependencyAnalyzerBundle
+                        .message("analyzer.action.edit.libraryOnly")
+                    )
+                    assert(SbtDependencyAnalyzerActionUtil.getEditableDependency(presentation) == null)
+                    remove.actionPerformed(presentation)
+                    assert(source.getText == before, "Unsupported dependency modified the build")
+                  }
+                  val invalidCoordinates = Seq(
+                    null,
+                    new com.intellij.buildsystem.model.unified.UnifiedCoordinates(null, "a", "1"),
+                    new com.intellij.buildsystem.model.unified.UnifiedCoordinates("g", null, "1"),
+                    new com.intellij.buildsystem.model.unified.UnifiedCoordinates("g", "a", null)
+                  ) ++ malformed.map(getUnifiedCoordinates(_))
+                  for (coordinates <- invalidCoordinates; removing <- Seq(false, true)) {
+                    val error = scala.util
+                      .Try(
+                        bitlap.sbt.analyzer.util.packagesearch.DependencyEditPlan
+                          .prepare(project, declaration, coordinates, removing)
+                      )
+                      .failed
+                      .get
+                    assert(error.isInstanceOf[IllegalArgumentException], error.toString)
+                    assert(error.getMessage.contains("complete coordinates"), error.getMessage)
+                    assert(source.getText == before)
+                  }
+                  selected = direct
+                  remove.update(presentation)
+                  assert(presentation.getPresentation.isEnabled, "Valid library selection did not recover")
+                  assert(SbtDependencyAnalyzerActionUtil.getEditableDependency(presentation) != null)
+                }
+              )
             val expectedSource = target.navigationDeclarations.head.getDataContext
               .getData(DependencyDeclaration.Key)
               .expression

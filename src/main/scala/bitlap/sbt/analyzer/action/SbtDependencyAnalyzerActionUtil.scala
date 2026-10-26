@@ -32,6 +32,23 @@ object SbtDependencyAnalyzerActionUtil {
       org.jetbrains.sbt.project.SbtProjectSystem.Id &&
       e.getData(DependencyAnalyzerView.Companion.getDEPENDENCY) != null
 
+  /** Module nodes represent project relationships, not editable library coordinates. */
+  def isEditableArtifact(dependency: DependencyAnalyzerDependency): Boolean =
+    dependency != null && (dependency.getData match {
+      case artifact: DependencyAnalyzerDependency.Data.Artifact =>
+        Seq(artifact.getGroupId, artifact.getArtifactId, artifact.getVersion)
+          .forall(value => value != null && value.trim.nonEmpty)
+      case _ => false
+    })
+
+  /** Revalidates both selection and direct ancestor before an edit, including programmatic action invocation. */
+  def getEditableDependency(e: AnActionEvent): ModifiableDependency = {
+    if (!isSbtDependency(e) || !isEditableArtifact(e.getData(DependencyAnalyzerView.Companion.getDEPENDENCY)))
+      return null
+    val target = getModifiableDependency(e)
+    if (target != null && isEditableArtifact(target.parentDependency)) target else null
+  }
+
   /** Resolves the selected artifact and its direct ancestor declarations under read access. Returns null when
    *  selection, module identity or smart-mode PSI resolution is unavailable; ambiguity is retained in the candidate
    *  lists for the caller to present.
