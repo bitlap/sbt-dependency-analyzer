@@ -844,7 +844,7 @@ object SbtDependencyUtils {
    */
   def declaredDependencies(module: OpenapiModule): java.util.List[DeclaredDependency] = try {
     inReadAction {
-      val platform = if (module.isScalaJs) "js" else if (module.isScalaNative) "native" else "jvm"
+      val platform = SbtModuleIdentity.platformForModule(module)
       val roots    = getSbtFileOpt(module).toSeq.flatMap { build =>
         // sbt loads every .sbt file in a project directory, not only build.sbt.
         val directories = Seq(
@@ -859,10 +859,26 @@ object SbtDependencyUtils {
           file
         }
       )
+      val patterns = roots.flatMap(_.getChildren.toSeq.collect { case p: ScPatternDefinition => p })
+      val metadata = getSbtModuleData(module)
+      val exact    = patterns.filter(DependencyUtils.containsModuleName(_, module))
+      val selected =
+        if (exact.nonEmpty) exact
+        else
+          (for {
+            data      <- metadata
+            identity  <- org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(module)
+            buildRoot <- scala.util.Try(java.nio.file.Path.of(data.buildURI.uri)).toOption
+          } yield bitlap.sbt.analyzer.parsing.SbtProjectFactoryResolver.select(
+            patterns,
+            identity.id,
+            data.baseDirectory.toPath,
+            buildRoot
+          )).getOrElse(Nil)
       val expressions = roots.flatMap { file =>
-        val projects  = bitlap.sbt.analyzer.parsing.SbtProjectResolver.projects(file)
-        val selected  = projects.filter(DependencyUtils.containsModuleName(_, module))
-        val settings  = selected.flatMap(bitlap.sbt.analyzer.parsing.SbtProjectResolver.settings(_, platform))
+        val settings = selected
+          .filter(_.getContainingFile == file)
+          .flatMap(bitlap.sbt.analyzer.parsing.SbtProjectResolver.settings(_, platform))
         val base      = getSbtModuleData(module).map(_.baseDirectory.toPath.toAbsolutePath.normalize())
         val localFile = Option(file.getVirtualFile).exists(f =>
           base.contains(java.nio.file.Path.of(f.getParent.getPath).toAbsolutePath.normalize())

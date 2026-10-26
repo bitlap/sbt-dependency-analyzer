@@ -457,6 +457,9 @@ object SbtDeclarationResolver {
                       }
                   }
               }
+            // Each branch keeps its own physical declaration. No condition or .value expression is evaluated.
+            case conditional: ScIf =>
+              (conditional.thenExpression.toSeq ++ conditional.elseExpression.toSeq).flatMap(loop(_, next, editable))
             case block: ScBlockExpr => block.exprs.lastOption.toSeq.flatMap(loop(_, next, editable))
             case _                  => Nil
           }

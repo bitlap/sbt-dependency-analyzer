@@ -41,20 +41,52 @@ object AnalyzerSmokeStarterSourceActions {
         ("shared ordered sequence", "shared", "compile", false),
         ("cross file shared sequence", "Dependencies.all", "compile", false),
         ("shared sequence in test scope", "shared", "test", false),
-        ("renamed IDEA module", coordinate, "compile", true)
+        ("renamed IDEA module", coordinate, "compile", true),
+        ("factory-created multi-module", coordinate, "compile", false),
+        ("factory CrossProject JVM", "\"g\" %%% \"a\" % \"1\"", "compile", false),
+        ("factory conditional dependency", "conditional", "compile", false)
       )
     )
       check(
         s"imported sbt source actions: $label",
         () => {
-          val base   = Files.createTempDirectory(Path.of(System.getProperty("idea.system.path")), "source-actions-")
-          val build  = Files.createDirectories(base.resolve("project"))
-          val shared = expression == "shared" || expression == "Dependencies.all"
-          val prefix = if (expression == "shared") s"val shared = Seq($coordinate, \"g\" %% \"b\" % \"1\")\n" else ""
-          val assignment = if (shared) s"libraryDependencies ++= $expression" else s"libraryDependencies += $expression"
+          val base     = Files.createTempDirectory(Path.of(System.getProperty("idea.system.path")), "source-actions-")
+          val build    = Files.createDirectories(base.resolve("project"))
+          val shared   = expression == "shared" || expression == "Dependencies.all"
+          val prefix   = if (expression == "shared") s"val shared = Seq($coordinate, \"g\" %% \"b\" % \"1\")\n" else ""
+          val factory  = label.startsWith("factory")
+          val cross    = label == "factory CrossProject JVM" || label == "factory conditional dependency"
+          val moduleId = if (cross) "actualJVM" else "actual"
+          val moduleBase =
+            if (factory) Files.createDirectories(base.resolve(if (cross) "modules/actual/jvm" else "modules/actual"))
+            else base
+          val factoryDefinitions = """
+            |def describe(path: String)(p: Project) = { val label = path; p.settings(name := label) }
+            |def makeBase(path: String, deps: List[ClasspathDep[ProjectReference]] = Nil): Project = {
+            |  val id = path.split("[-/]").reduce(_ + _.capitalize)
+            |  Project(id, file(s"modules/$path")).configure(describe(path)).configure(_.dependsOn(deps: _*))
+            |}
+            |def makeModule(path: String): Project = makeBase(path, Nil)
+            |def makeCross(path: String, kind: CrossType = CrossType.Full) = {
+            |  val id = path.split("[-/]").reduce(_ + _.capitalize)
+            |  CrossProject(id, file(s"modules/$path"))(JVMPlatform, JSPlatform, NativePlatform)
+            |    .crossType(kind).settings(Seq()).configure(describe(path)).configure(_.dependsOn())
+            |}
+            |lazy val unrelated = makeModule("other").settings(libraryDependencies += "other" %% "keep" % "9")
+            |""".stripMargin
+          val assignment =
+            if (expression == "conditional")
+              s"libraryDependencies ++= (if (tlIsScala3.value) Nil else Seq($coordinate))"
+            else if (shared) s"libraryDependencies ++= $expression"
+            else s"libraryDependencies += $expression"
+          val constructor =
+            if (factory) (if (cross) "makeCross(\"actual\", CrossType.Full)" else "makeModule(\"actual\")")
+            else "(project in file(\".\"))"
           Files.writeString(
             base.resolve("build.sbt"),
-            prefix + s"""lazy val actual = (project in file(".")).settings($assignment)"""
+            prefix + (if (factory) factoryDefinitions
+                      else
+                        "") + s"lazy val ${if (factory) "differentBinding" else "actual"} = $constructor.settings($assignment)"
           )
           if (expression == "Dependencies.all")
             Files.writeString(
@@ -65,9 +97,9 @@ object AnalyzerSmokeStarterSourceActions {
           val system = SbtProjectSystem.Id
           val pd     = new ProjectData(system, "source-actions", base.toString, base.toString)
           val root   = new DataNode(ProjectKeys.PROJECT, pd, null)
-          val md     = new ModuleData("actual", system, "JAVA_MODULE", "actual", base.toString, base.toString)
+          val md     = new ModuleData(moduleId, system, "JAVA_MODULE", "actual", base.toString, moduleBase.toString)
           val node   = root.createChild(ProjectKeys.MODULE, md)
-          node.createChild(SbtModuleData.Key, SbtModuleData("actual", base.toUri, base))
+          node.createChild(SbtModuleData.Key, SbtModuleData(moduleId, base.toUri, moduleBase))
           val bm = new ModuleData("build", system, "JAVA_MODULE", "fixture-build", base.toString, build.toString)
           root
             .createChild(ProjectKeys.MODULE, bm)
@@ -115,7 +147,7 @@ object AnalyzerSmokeStarterSourceActions {
               )
             }
             val module = modules.head
-            assert(SbtUtil.getSbtProjectUriAndId(module).exists(_.id == "actual"), "Imported sbt identity unavailable")
+            assert(SbtUtil.getSbtProjectUriAndId(module).exists(_.id == moduleId), "Imported sbt identity unavailable")
             assert(findModule(project, md) == module, "Analyzer module lookup failed")
             AnalyzerSmokeStarterCore.eventually("imported declarations recover after an early empty lookup") {
               DependencyUtils.getDeclaredDependency(module).nonEmpty
@@ -199,6 +231,11 @@ object AnalyzerSmokeStarterSourceActions {
             val removal = bitlap.sbt.analyzer.util.packagesearch.DependencyEditPlan
               .prepare(project, afterDeclaration, target.coordinates, true)
             removal.apply()
+            if (factory)
+              assert(
+                removal.after.contains("libraryDependencies += \"other\" %% \"keep\" % \"9\""),
+                "Sibling module changed"
+              )
             val remaining = DependencyUtils.getDeclaredDependency(module)
             assert(
               !remaining.exists(_.getCoordinates.getArtifactId == "a"),

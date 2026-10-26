@@ -533,6 +533,70 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         assert(!PsiTreeUtil.hasErrorElements(fixture(plan.after)), plan.after)
         assert(plan.after.contains("keep comment") && plan.after.contains("\"b\""))
       }
+      check("PSI custom factory paths select renamed CrossProjects across JVM JS Native and platform settings") {
+        val file = fixture("""def arbitraryFactory(path: String, kind: CrossType = CrossType.Full) = {
+          |  val computedId = path.split("[-/]").reduce(_ + _.capitalize)
+          |  CrossProject(computedId, file(s"modules/$path"))(JVMPlatform, JSPlatform, NativePlatform).crossType(kind)
+          |}
+          |lazy val firstBinding = arbitraryFactory(path = "renamed-module")
+          | .settings(libraryDependencies += "g" %%% "common" % "1")
+          | .jsSettings(libraryDependencies += "g" %%% "js-only" % "1")
+          | .nativeSettings(libraryDependencies += "g" %%% "native-only" % "1")
+          |lazy val otherBinding = arbitraryFactory("other-module").settings(libraryDependencies += "g" % "other" % "1")
+          |""".stripMargin)
+        val patterns = file.getChildren.toSeq.collect { case p: ScPatternDefinition => p }
+        val build    = output.resolve("factory-build").toAbsolutePath
+        for (suffix <- Seq("", "jvm", "js", "native", ".jvm", ".js", ".native")) {
+          val matched = parsing.SbtProjectFactoryResolver.select(
+            patterns,
+            "imported-id",
+            build.resolve("modules/renamed-module").resolve(suffix),
+            build
+          )
+          assert(matched.size == 1 && matched.head.bindings.head.name == "firstBinding", suffix)
+          val platform = suffix.stripPrefix(".") match { case "" => "jvm"; case other => other }
+          val found    =
+            SbtProjectResolver.settings(matched.head, platform).flatMap(SbtDeclarationResolver.dependencies(_))
+          assert(
+            found.map(_.artifact).toSet == Set("common") ++ (if (platform == "jvm") Set.empty[String]
+                                                             else Set(platform + "-only"))
+          )
+        }
+      }
+      check("PSI factory path ambiguity never enables edits on an arbitrary project") {
+        val file = fixture("""def factory(path: String) = Project(path, file("modules/" + path))
+          |lazy val first = factory("same").settings(libraryDependencies += "g" % "first" % "1")
+          |lazy val second = factory("same").settings(libraryDependencies += "g" % "second" % "1")
+          |""".stripMargin)
+        val patterns = file.getChildren.toSeq.collect { case p: ScPatternDefinition => p }
+        val build    = output.resolve("factory-build").toAbsolutePath
+        assert(
+          parsing.SbtProjectFactoryResolver
+            .select(patterns, "imported-id", build.resolve("modules/same"), build)
+            .isEmpty
+        )
+      }
+      check(
+        "PSI factory fallback rejects dynamic returns recursive helpers and directory-changing configure functions"
+      ) {
+        for (
+          factory <- Seq(
+            "def factory(path: String) = if (runtime.value) Project(path, file(path)) else Project(path, file(\"other\"))",
+            "def factory(path: String): Project = factory(path)",
+            "def move(p: Project) = p.in(file(\"elsewhere\")); def factory(path: String) = Project(path, file(path)).configure(move)"
+          )
+        ) {
+          val file = fixture(
+            factory + "; lazy val actual = factory(\"module\").settings(libraryDependencies += \"g\" % \"a\" % \"1\")"
+          )
+          val patterns = file.getChildren.toSeq.collect { case p: ScPatternDefinition => p }
+          val build    = output.resolve("factory-build").toAbsolutePath
+          assert(
+            parsing.SbtProjectFactoryResolver.select(patterns, "imported-id", build.resolve("module"), build).isEmpty,
+            factory
+          )
+        }
+      }
       check("PSI direct removal in settings removes its separator") {
         Seq(
           "libraryDependencies += \"g\" % \"a\" % \"1\", name := \"keep\"",

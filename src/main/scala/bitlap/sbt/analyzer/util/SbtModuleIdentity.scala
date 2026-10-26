@@ -17,6 +17,23 @@ object SbtModuleIdentity {
       }
     }
 
+  /** Uses source-set compiler metadata when an aggregate IDE module has no platform libraries of its own. */
+  def platformForModule(module: com.intellij.openapi.module.Module): String = {
+    import org.jetbrains.plugins.scala.project.*
+    val identity = org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(module)
+    val evidence = com.intellij.openapi.module.ModuleManager
+      .getInstance(module.getProject)
+      .getModules
+      .toSeq
+      .filterNot(_.isDisposed)
+      .filter(m => identity.nonEmpty && org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(m) == identity)
+      .map(m => "selected" -> (if (m.isScalaJs) "js" else if (m.isScalaNative) "native" else "jvm"))
+    platformsByProject(evidence).getOrElse(
+      "selected",
+      if (module.isScalaJs) "js" else if (module.isScalaNative) "native" else "jvm"
+    )
+  }
+
   def projectIdForArtifact(
     artifact: String,
     moduleNames: Map[String, String],
