@@ -1,123 +1,100 @@
-# sbt-dependency-analyzer
+# Sbt Dependency Analyzer
 
-<img src="./logo.svg" width="250" height="150" alt="Sbt Dependency Analyzer Logo" align="right" />
+<img src="./logo.svg" width="200" alt="Sbt Dependency Analyzer logo" align="right" />
 
 [![Build Status][badge:build]][gh:workflows-build]
 [![License][badge:license]][gh:license]
-[![GitHub releases][badge:release]][gh:releases]
-[![Version][badge:version]][plugin-versions]
 [![Downloads][badge:downloads]][plugin-homepage]
 
-<p align="center"><b>Sbt Dependency Analyzer plugin for IntelliJ based IDEs/Android Studio.</b></p>
+Inspect sbt dependency trees, trace version conflicts, and navigate to or edit dependency declarations in IntelliJ IDEA.
 
+**English** | [中文](README-CN.md) · [Marketplace][plugin-homepage] · [Report an issue](https://github.com/bitlap/sbt-dependency-analyzer/issues)
 
-English | [中文](README-CN.md)
+## Features
 
-**⭐ Found this plugin useful? Please give it a Star on [GitHub](https://github.com/bitlap/sbt-dependency-analyzer) to show your support!**
+- **Dependencies and usage paths**: Explore direct and transitive dependencies and their usages, filtered by module and scope.
+- **Search and conflicts**: Find dependencies, inspect version conflicts, and trace how a dependency was introduced.
+- **Module dependencies**: Distinguish sbt project IDs, published names and IDEA display names when analyzing multi-module, JVM, Scala.js and Scala Native projects.
+- **Source navigation and edits**: Find declarations and preview direct dependency removal or transitive dependency exclusion.
+- **JAR sizes**: Load sizes on demand and deduplicate resolved coordinates when calculating totals.
 
-## 🚀 Overview
+![Dependency tree, version conflicts and usage paths](docs/dependencyTreeConflicts.jpg)
 
-The Sbt Dependency Analyzer plugin provides powerful visual tools to help you understand, manage, and troubleshoot your Sbt project's dependencies with ease. Gain clear insights into your library dependencies and their relationships, directly within your IDE.
+## Quick start
 
-## ✨ Key Features
+1. Install **Scala** and **Sbt Dependency Analyzer** from `Settings/Preferences → Plugins → Marketplace`.
+2. Import an sbt project in IDEA and wait for project import and indexing to finish.
+3. Press **Ctrl + Shift + L** on Windows, Linux or macOS, or use the sbt tool-window button or **Analyze sbt Dependencies** in a module's context menu.
+4. Select a module and scope, then search dependencies or inspect their usage paths.
 
-*   **Dependency Tree Visualization**: View a hierarchical tree of all your project's dependencies.
-*   **Conflict Identification**: Quickly spot and resolve version conflicts between libraries.
-*   **Dependency Search**: Easily find specific dependencies across your project.
-*   **Inter-Module Dependency Analysis**: Visualize how different modules in your project depend on each other.
-*   **JAR Size Indicators**: See the size of dependency JARs to better manage your project's footprint.
-*   **Navigate to Declaration**: Click on a *user-defined* dependency to jump directly to its declaration in `build.sbt`.
-*   **Dependency Exclusion (Experimental)**:
-    *   Select a *transitive* dependency to exclude it from a *user-defined* dependency.
-    *   Select a *user-defined* dependency to remove it entirely.
+The first analysis generates `project/sdap.sbt` when needed to enable dependency graph tasks. Keep this generated file and reload sbt when prompted by the IDE.
 
-## 🛠️ Installation & Setup
+## Common actions
 
-1.  **Install the Plugin**: Go to `Settings/Preferences` > `Plugins` > `Marketplace`, search for "Sbt Dependency Analyzer", and install it.
-2.  **Automatic Setup**: Upon first analysis, the plugin will automatically generate a `project/sdap.sbt` file if needed. This file adds the required `addDependencyTreePlugin` statement. **Please do not modify or delete this file** once created.
-3.  **Plugin Dependency**: This plugin leverages the `sbt-dependency-tree` functionality, which is bundled with recent sbt versions (though not be enabled by default, [sbt issue](https://github.com/sbt/sbt/pull/5880)).
+Select a dependency in the list or tree and open its context menu:
 
-## 📖 Usage
-
-> **Default Keyboard Shortcut**: `Ctrl` + `Shift` + `L` (Windows/Linux) / `Ctrl` + `Shift` + `L` (macOS)
-
-Open an imported sbt project and use the shortcut, the sbt tool-window toolbar, or **Analyze sbt Dependencies** in a module's context menu.
-
-| Operation | Behavior |
+| Action | Purpose |
 | --- | --- |
-| Refresh Dependencies | Invalidates graph caches and regenerates DOT files without a full project import. |
-| Refresh Snapshot Dependencies | Updates the selected module's snapshots in the background and removes only the temporary session settings introduced by the action. |
-| Go to Dependency | Navigates to an unambiguous declaration matching coordinates, version and scope. |
-| Remove Direct Dependency | Previews removal of the selected direct declaration. |
-| Exclude from … | Previews exclusion of a transitive dependency from its direct parent declaration. |
-| Apply / Cancel | Applies the reviewed edit as one undoable command, or leaves the build unchanged. |
+| Go to Dependency | Navigate to the source declaration; choose a target when several declarations match. |
+| Remove Direct Dependency | Preview removal of the selected direct dependency's use site. |
+| Exclude from … | Preview exclusion of a transitive dependency from the selected direct declaration. |
+| Refresh Dependencies | Invalidate graph caches and analyze again. |
+| Refresh Snapshot Dependencies | Update the current module's SNAPSHOT dependencies in the background. |
 
-Ambiguous edits require declaration selection. Shared/computed declarations that cannot be removed safely produce an explanation. After applying an edit, reload sbt when the IDE shows its build-change notification, then analyze again. File edits and sbt's loaded build are distinct states.
+Removal and exclusion are experimental. Review the before/after preview before applying, or cancel; applying creates one undoable command. Reload sbt after an edit, then refresh the analysis.
 
-Analysis runs in the background. Cancellation stops waiting; an already submitted sbt command can continue in the shell. Errors include a retry action. Module and scope selectors support Enter, and scope selection also supports Space.
+Navigation resolves constants, dependency aliases and common dependency expressions. Shared `ModuleID` aliases are edited at their use sites where possible. Shared dependency lists remain navigable, and computed declarations that cannot be located safely are not modified automatically. Exact versions take precedence; evicted or dynamic versions fall back to coordinate and scope candidates.
 
-![Dependency Analysis View](https://plugins.jetbrains.com/files/22427/screenshot_064531dc-a3fa-4a8e-9437-7e76defa1f48)
-*The interactive dependency graph provides a clear overview of your project's structure.*
+Analysis runs in the background, and failure notifications offer a retry action. Cancellation stops waiting; a submitted sbt command may continue running. Module and scope selectors support Enter; scope checkboxes also support Space.
 
-## ⚙️ Configuration <a id="settings"></a>
+## Settings <a id="settings"></a>
 
-Fine-tune the plugin's behavior and potentially speed up analysis via `Settings/Preferences` > `Tools` > `Sbt Dependency Analyzer`:
+Open `Settings/Preferences → Tools → Sbt Dependency Analyzer`:
 
-<img src="./docs/settings.png" width="400" height="280" alt="Plugin Settings Panel" align="right" />
+| Setting | Description |
+| --- | --- |
+| File Cache Timeout | Seconds to reuse dependency graph data; defaults to `3600`. Set `0` to disable graph caching. |
+| Organization override | Leave blank to read the current sbt module's setting, or supply an organization explicitly. |
+| Disabled scopes | Skip Compile, Test or Provided analysis when not needed. |
 
-*   **File Cache Timeout**: Adjust how long (in seconds) the plugin uses cached dependency graph files (`.dot`) before re-running the `dependencyDot` command. (Default: `3600`; `0` disables graph caching).
-*   **Organization**: Predefine your project's organization value here to avoid the plugin needing to query sbt for it.
-*   **Disable Scopes**: Improve analysis speed by disabling dependency scopes (e.g., `Test`, `Provided`) you are not interested in.
+Settings are saved per IDEA project. **Refresh Dependencies** immediately invalidates graph caches; closing the project releases in-memory caches.
 
-These settings are stored per IntelliJ project in `.idea/bitlap.sbt.dependency.analyzer.xml`. Deleting this file resets persisted settings after reopening the project. Use **Refresh Dependencies** in the analyzer to invalidate dependency graphs immediately. In-memory caches belong to the project and are released when it closes.
+<details>
+<summary>View the settings panel</summary>
 
-## ❗ Troubleshooting
+![Settings panel](docs/validation/settings.png)
 
-### Issue: "Caused by: java.io.IOException: Could not create lock for ..."
-This error can occur due to conflicts between the plugin's use of the sbt shell and IntelliJ IDEA's internal project reload/build mechanisms.
-*   **Solution**: Use the **sbt shell within IntelliJ IDEA** for reloading (`sbt reload`) or building (`sbt compile`) your project, instead of the IDE's built-in buttons.
-    <img src="./docs/sbtShellUseForReload.jpg" width="500" height="230" alt="Using SBT Shell for reload and compile" align="center" />
+</details>
 
-### Issue: Cannot analyze dependencies between modules
-The plugin may fail to correctly parse inter-module dependencies if it cannot determine the project organization.
-*   **Solution**: Ensure the plugin knows your project's organization by either:
-    1.  Setting the **Organization** value in the plugin's [settings](#settings).
-    2.  Defining the `organization` setting in your `build.sbt` globally using `ThisBuild / organization` or `inThisBuild(...)`.
-> **Note**: Imported modules are queried directly when missing from aggregated `moduleName` output, so `aggregate` / `dependsOn` membership is not required for module-name discovery.
+## Troubleshooting
 
-Independent linked builds must be opened in separate IDE projects: the Scala plugin supplies one active sbt shell per IDE project. The analyzer rejects a module from a different shell root instead of displaying another build’s graph.
+### Edits are not reflected in the dependency tree
 
-## 🔍 Technical Details
+Save the build file and reload sbt, then select **Refresh Dependencies**. Refreshing the analyzer alone does not make sbt reload the build definition.
 
-1. The plugin executes several sbt commands (`organization`, `moduleName`, `dependencyDot`, `reload`, `update`) to gather dependency information. Direct edges are indexed once, node indices are local to each graph, and parsing uses a project-owned bounded cache validated against file metadata. Graph expansion stops with an explicit error above 512 levels or 100,000 dependency paths. JAR sizes are calculated on demand; totals count each resolved coordinate once, rather than counting duplicate paths.
-2. The plugin has replicated the Kotlin code from the [intellij-community](https://github.com/JetBrains/intellij-community) project on the UI and compiles it using the [kotlin-plugin](https://github.com/bitlap/kotlin-plugin).
+### No source declaration is found, or editing is disabled
 
-## 🤝 Contributing
+Wait for indexing and check the selected module and scope. The plugin does not infer arbitrary dependency factories from their string arguments or automatically rewrite shared dependency lists; edit those declarations in the build file.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for JDK setup, tests, benchmarks, sandbox launch, and release checks.
+### Module dependencies are not recognized
 
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests on [GitHub](https://github.com/bitlap/sbt-dependency-analyzer).
+Finish sbt import and check the modules' `organization` settings. Set an [Organization override](#settings) if needed. Module-name discovery does not require membership in the root project's `aggregate` or `dependsOn`.
 
-## 🙏 Acknowledgments
+Open independent builds in separate IDEA projects. Analysis within one IDEA project uses the active sbt shell and rejects modules from another shell root.
 
-**JetBrains Support**: This project is developed using JetBrains IntelliJ IDEA. We extend our gratitude to JetBrains for providing a free license, which significantly supports its development.
+### “Could not create lock for …”
 
-<a href="https://www.jetbrains.com">
-<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg?_gl=1*8f2ovk*_ga*NTY2NTA4Mzg1LjE2NzU3MzgzMTI.*_ga_9J976DJZ68*MTcwMzIwOTE4NS4xODUuMS4xNzAzMjA5NDYzLjI4LjAuMA..&_ga=2.177269094.2105719560.1703209186-566508385.1675738312" alt="IntelliJ IDEA logo.">
-</a>
+Wait for any active import or build to finish, then use `reload` or `compile` in IDEA's sbt shell. Avoid concurrent operations on the same build.
 
-<br />
+## Development and validation
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for builds, tests, sandbox launch and release instructions. The [validation record](docs/validation/README.md) contains performance measurements, PSI regression results, screenshots and test boundaries.
+
+[Issues](https://github.com/bitlap/sbt-dependency-analyzer/issues) and pull requests are welcome. Thanks to [JetBrains](https://www.jetbrains.com/) for supporting development tools.
 
 [badge:build]: https://github.com/bitlap/sbt-dependency-analyzer/actions/workflows/ScalaCI.yml/badge.svg
-[plugin-logo]: https://github.com/bitlap/sbt-dependency-analyzer/blob/master/logo.svg
 [badge:license]: https://img.shields.io/github/license/bitlap/sbt-dependency-analyzer.svg?style=flat-square
-[badge:release]: https://img.shields.io/github/release/bitlap/sbt-dependency-analyzer.svg?sort=semver&style=flat-square&colorB=0097A7&include_prereleases
-[badge:version]: https://img.shields.io/jetbrains/plugin/v/22427.svg?style=flat-square&colorB=2196F3
 [badge:downloads]: https://img.shields.io/jetbrains/plugin/d/22427.svg?style=flat-square&colorB=5C6BC0
-
-[gh:sbt-dependency-analyzer]: https://github.com/bitlap/sbt-dependency-analyzer
-[gh:releases]: https://github.com/bitlap/sbt-dependency-analyzer/releases
 [gh:workflows-build]: https://github.com/bitlap/sbt-dependency-analyzer/actions/workflows/ScalaCI.yml
 [gh:license]: https://github.com/bitlap/sbt-dependency-analyzer/blob/master/LICENSE
 [plugin-homepage]: https://plugins.jetbrains.com/plugin/22427-sbt-dependency-analyzer
-[plugin-versions]: https://plugins.jetbrains.com/plugin/22427-sbt-dependency-analyzer/versions
