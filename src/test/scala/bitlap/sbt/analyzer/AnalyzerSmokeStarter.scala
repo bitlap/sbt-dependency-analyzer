@@ -35,6 +35,7 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
       results.append(f"PASS $name ${(System.nanoTime() - start) / 1000000.0}%.2f ms\n")
     }
     try {
+      ScalaOptionCompatibilityChecks.run((name, passed) => check(name) { assert(passed) })
       val projectPath =
         Files.createTempDirectory(Path.of(System.getProperty("idea.system.path")), "regression-project-")
       val project = com.intellij.openapi.project.ex.ProjectManagerEx.getInstanceEx.openProject(

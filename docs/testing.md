@@ -27,14 +27,15 @@ python3 tools/test-sbt-workflows.py
 | JAR 大小 | 真实 JAR 文件长度、共享/循环路径去重和淘汰跳过；后台计算、单次调度、EDT 回调、缓存命中、坐标相等性和 hash 不随大小改变 | `AnalyzerSmokeStarterUiFlows` |
 | 刷新事件与生命周期 | 设置/刷新事件清缓存、忽略其他项目、dispose 后监听断开、关闭视图不接受后台结果 | `AnalyzerSmokeStarterCore`、`AnalyzerSmokeStarterUiFlows` |
 | What’s New | 首次/升级/重复/降级、失败可重试、成功才记版本、本地只读 HTML 渲染和释放 | `WhatsNewSpec`、IDE 回归 |
+| Scala 运行时兼容性 | 缺失/空/非空选择、工具栏状态传递；编译目录与插件 JAR 不含不兼容的 Option.orNull 调用 | `ScalaOptionCompatibilityChecks`、[字节码检查说明](scala-runtime-compatibility.md) |
 | 打包与兼容性 | 分发包逐字节包含全部生产类、排除测试辅助类，Plugin Verifier 验证目标 SDK | `PackagingRegressionSpec`、`runPluginVerifier` |
 
 ## 本轮验证结果
 
 2026-10-26 本地验证通过：
 
-- `sbt test`：55 项，断言运行时间 1.259 秒（不含构建准备）。
-- `sbt psiTest`：44 项，检查体耗时合计 6.116 秒（不含构建准备及 IDE 启动）。
+- `sbt test`：55 项，断言运行时间 2.322 秒（不含构建准备）。
+- `sbt psiTest`：49 项，检查体耗时合计 20.784 秒（不含构建准备及 IDE 启动）。
 - 真实 sbt 夹具：通过，23.81 秒，涵盖 RootProject、同名 ID、未聚合模块、七份 DOT、外部 Runtime 依赖和 session 清理，详见 [#144 修复记录](issue-144.md)。
 - `sbt check`、`git diff --check`、Python 语法及文档链接检查通过。
 - Plugin Verifier：Compatible，保留 19 处弃用、31 处实验性和 16 处内部 API 提示。
