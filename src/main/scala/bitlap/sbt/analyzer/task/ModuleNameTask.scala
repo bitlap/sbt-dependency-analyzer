@@ -23,19 +23,17 @@ final class ModuleNameTask extends SbtShellOutputAnalysisTask[Map[String, String
   }
 
   override def executeCommand(project: Project): Map[String, String] = {
-    val root = java.nio.file.Path.of(SbtUtil.getWorkingDirPath(project)).toAbsolutePath.normalize()
-    val ids  = inReadAction {
+    val loaded = new LoadedSbtProjectsTask().executeCommand(project)
+    val ids    = inReadAction {
       ModuleManager
         .getInstance(project)
         .getModules
         .toSeq
         .filterNot(DependencyUtils.canIgnoreModule)
-        .filter(m =>
-          Option(com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil.getExternalRootProjectPath(m))
-            .exists(path => java.nio.file.Path.of(path).toAbsolutePath.normalize() == root)
-        )
         .flatMap(SbtUtil.getSbtProjectUriAndId)
-        .map(_.id)
+        .map(ref => bitlap.sbt.analyzer.util.SbtProjectReference(ref.uri, ref.id))
+        .filter(loaded.contains)
+        .map(_.selector)
         .distinct
     }
     ids.map(id => id -> executeForModule(project, id)).toMap

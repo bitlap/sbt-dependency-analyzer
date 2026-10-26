@@ -1,33 +1,58 @@
 #!/usr/bin/env python3
-"""Verify real sbt scoped queries, DOT output and session cleanup in an isolated dependency-free build."""
+"""Verify scoped queries, RootProject references, DOT output and session cleanup using real sbt."""
 import os
 import re
 from pathlib import Path
 import shutil
 import subprocess
 import time
+import zipfile
 
 root = Path(__file__).resolve().parents[1]
 work = root / "target" / "sbt-workflows"
 work.mkdir(parents=True, exist_ok=True)
-(work / "project").mkdir(exist_ok=True)
-(work / "project" / "build.properties").write_text((root / "project" / "build.properties").read_text())
-(work / "project" / "plugins.sbt").write_text("addDependencyTreePlugin\n")
+child = work / "external build"
 scala_version = re.search(r'scala3Version\s*=\s*"([^\"]+)"', (root / "build.sbt").read_text()).group(1)
-(work / "build.sbt").write_text('''ThisBuild / scalaVersion := "__SCALA_VERSION__"
+for build in (work, child):
+    (build / "project").mkdir(parents=True, exist_ok=True)
+    (build / "project" / "build.properties").write_text((root / "project" / "build.properties").read_text())
+    (build / "project" / "plugins.sbt").write_text("addDependencyTreePlugin\n")
+
+# A local Maven repository makes the external Runtime dependency independent of external artifact servers.
+repository = work / "fixture-repository"
+artifact = repository / "fixture/runtime/runtime-only/1.0.0"
+artifact.mkdir(parents=True, exist_ok=True)
+(artifact / "runtime-only-1.0.0.pom").write_text('''<project><modelVersion>4.0.0</modelVersion>
+<groupId>fixture.runtime</groupId><artifactId>runtime-only</artifactId><version>1.0.0</version></project>''')
+with zipfile.ZipFile(artifact / "runtime-only-1.0.0.jar", "w") as jar:
+    jar.writestr("fixture.txt", "RootProject runtime dependency")
+common = f'''ThisBuild / scalaVersion := "{scala_version}"
 ThisBuild / version := "1.0.0"
 ThisBuild / autoScalaLibrary := false
 ThisBuild / crossPaths := false
-lazy val verifyWorkflow = taskKey[Unit]("Verify analyzer sbt workflow")
-lazy val root = project.in(file(".")).aggregate(api).settings(
-  moduleName := "published-root",
-  organization := "fixture.root",
+'''
+uri = child.as_uri() + "/"
+(child / "build.sbt").write_text(common + f'''ThisBuild / externalResolvers := Seq("fixture" at "{repository.as_uri()}/", "central" at "https://repo.maven.apache.org/maven2")
+lazy val project1Root = project.in(file(".")).settings(
+  moduleName := "external-published", organization := "fixture.external",
+  libraryDependencies += "fixture.runtime" % "runtime-only" % "1.0.0" % Runtime
+)
+lazy val duplicate = Project("core-api", file("duplicate-directory")).settings(
+  moduleName := "external-duplicate", organization := "fixture.external"
+)
+''')
+(work / "build.sbt").write_text(common + '''lazy val verifyWorkflow = taskKey[Unit]("Verify analyzer sbt workflow")
+lazy val root = project.in(file(".")).aggregate(api, RootProject(file("external build"))).settings(
+  moduleName := "published-root", organization := "fixture.root",
   verifyWorkflow := {
     assert((LocalProject("core-api") / moduleName).value == "published-api")
     assert((LocalProject("core-api") / organization).value == "fixture.api")
     assert((LocalProject("detached-tools") / moduleName).value == "published-detached")
-    assert((LocalProject("detached-tools") / organization).value == "fixture.detached")
-    assert((LocalProject("core-api") / update / skip).value, "User's session setting was removed")
+    assert((ProjectRef(uri("__EXTERNAL_URI__"), "project1Root") / moduleName).value == "external-published")
+    assert((ProjectRef(uri("__EXTERNAL_URI__"), "project1Root") / organization).value == "fixture.external")
+    assert((ProjectRef(uri("__EXTERNAL_URI__"), "core-api") / moduleName).value == "external-duplicate")
+    assert((LocalProject("core-api") / update / skip).value, "Main user session setting was removed")
+    assert((ProjectRef(uri("__EXTERNAL_URI__"), "project1Root") / update / skip).value, "External user session setting was removed")
     println("ANALYZER_SBT_WORKFLOW_PASS")
   }
 )
@@ -37,20 +62,32 @@ lazy val api = Project("core-api", file("different-directory")).settings(
 lazy val detached = Project("detached-tools", file("unaggregated-directory")).settings(
   moduleName := "published-detached", organization := "fixture.detached"
 )
-'''.replace("__SCALA_VERSION__", scala_version))
+'''.replace("__EXTERNAL_URI__", uri))
+reference = f'ProjectRef(uri("{uri}"), "project1Root")'
+selector = f"{{{uri}}}project1Root"
 commands = [
+    "projects",
     'set LocalProject("core-api") / update / skip := true',
+    f'set {reference} / update / skip := true',
     "session list",
     'set LocalProject("core-api") / update / skip := false',
     'set LocalProject("core-api") / csrConfiguration := (LocalProject("core-api") / csrConfiguration).value.withTtl(Some(scala.concurrent.duration.Duration.Zero))',
-    "core-api / update",
-    "core-api / Compile / dependencyDot",
-    "core-api / Test / dependencyDot",
-    "core-api / Provided / dependencyDot",
+    f'set {reference} / update / skip := false',
+    f'set {reference} / csrConfiguration := ({reference} / csrConfiguration).value.withTtl(Some(scala.concurrent.duration.Duration.Zero))',
+    "core-api / update", f"{selector} / update",
+    "core-api / Compile / dependencyDot", "core-api / Test / dependencyDot", "core-api / Provided / dependencyDot",
     "detached-tools / Compile / dependencyDot",
-    "session remove 3", "session remove 2", "session list", "verifyWorkflow",
+    f"{selector} / Compile / dependencyDot", f"{selector} / Test / dependencyDot",
+    f"{{{uri}}}core-api / Compile / dependencyDot",
+    "session remove 6", "session remove 5", "session remove 4", "session remove 3", "session list", "verifyWorkflow",
 ]
-for directory in (work / "different-directory", work / "unaggregated-directory"):
+expected = [
+    (work / "different-directory", ("compile", "test", "provided"), "fixture.api:published-api:1.0.0"),
+    (work / "unaggregated-directory", ("compile",), "fixture.detached:published-detached:1.0.0"),
+    (child, ("compile", "test"), "fixture.external:external-published:1.0.0"),
+    (child / "duplicate-directory", ("compile",), "fixture.external:external-duplicate:1.0.0"),
+]
+for directory, _, _ in expected:
     for path in (directory / "target").glob("dependencies-*.dot"):
         path.unlink()
 log = work / "sbt-workflows.log"
@@ -64,12 +101,12 @@ with log.open("w") as output:
 text = log.read_text()
 if result.returncode or "ANALYZER_SBT_WORKFLOW_PASS" not in text:
     raise SystemExit(f"sbt workflow failed; see {log}\n{text[-5000:]}")
-for directory, scopes, artifact in [
-    ("different-directory", ("compile", "test", "provided"), "fixture.api:published-api:1.0.0"),
-    ("unaggregated-directory", ("compile",), "fixture.detached:published-detached:1.0.0"),
-]:
+for directory, scopes, coordinate in expected:
     for scope in scopes:
-        dot = work / directory / "target" / f"dependencies-{scope}.dot"
-        if not dot.is_file() or artifact not in dot.read_text():
+        dot = directory / "target" / f"dependencies-{scope}.dot"
+        if not dot.is_file() or coordinate not in dot.read_text():
             raise SystemExit(f"Missing or incorrect DOT output: {dot}")
-print(f"PASS real sbt scoped moduleName/organization, four DOT outputs and session cleanup ({time.monotonic() - started:.2f}s)")
+runtime = "fixture.runtime:runtime-only:1.0.0"
+assert runtime in (child / "target/dependencies-test.dot").read_text(), "External Runtime dependency missing from Test graph"
+assert runtime not in (child / "target/dependencies-compile.dot").read_text(), "Runtime leaked into Compile graph"
+print(f"PASS real sbt RootProject/scoped queries, duplicate IDs, seven DOT outputs, Runtime scope and session cleanup ({time.monotonic() - started:.2f}s)")

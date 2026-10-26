@@ -198,6 +198,28 @@ object AnalyzerSmokeStarterCore {
     )
 
     check(
+      "RootProject SNAPSHOT refresh uses the external ProjectRef for temporary settings and update",
+      () => {
+        val ref      = bitlap.sbt.analyzer.util.SbtProjectReference("file:/external%20build/", "project1Root")
+        val commands = scala.collection.mutable.ListBuffer.empty[String]
+        val entries  = scala.collection.mutable.Map(1 -> "existingUserSetting := true")
+        val task     = new RefreshSnapshotsTask {
+          override protected def supportsTtl(p: Project): Boolean                   = false
+          override protected def commandOutput(p: Project, command: String): String = {
+            commands += command
+            if (command == "session list") entries.toSeq.map((i, value) => s"[info] $i. $value").mkString("\n")
+            else if (command.startsWith("set ")) { entries(2) = command.stripPrefix("set "); "" }
+            else if (command == "session remove 2") { entries.remove(2); "" }
+            else { assert(command == s"${ref.selector} / update"); "" }
+          }
+        }
+        task.executeForModule(project, ref.selector)
+        assert(commands.contains(s"set ${ref.settingReference} / update / skip := false"))
+        assert(entries.toMap == Map(1 -> "existingUserSetting := true"))
+      }
+    )
+
+    check(
       "task await enforces background execution and propagates failure and cancellation",
       () => {
         try { SbtTaskRunner.await(project, Future.successful(1)); throw new AssertionError("EDT command accepted") }

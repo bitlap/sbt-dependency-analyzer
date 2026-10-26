@@ -27,7 +27,7 @@ final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
     ideaModuleIdSbtModules: Map[String, String]
   ): DependencyScopeNode =
     val module   = findModule(project, moduleData)
-    val moduleId = sbtProjectId(project, moduleData)
+    val moduleId = sbtProjectSelector(project, moduleData)
 
     taskCompleteCallback(project, moduleData, scope) { file =>
       val sbtModuleNameMap =
@@ -52,7 +52,10 @@ final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
               .filterNot(canIgnoreModule)
               .flatMap(m =>
                 org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(m).map { ref =>
-                  ref.id -> (if (m.isScalaJs) "js" else if (m.isScalaNative) "native" else "jvm")
+                  bitlap.sbt.analyzer.util.SbtProjectReference(ref.uri, ref.id).selector -> (if (m.isScalaJs) "js"
+                                                                                             else if (m.isScalaNative)
+                                                                                               "native"
+                                                                                             else "jvm")
                 }
               )
               .toMap

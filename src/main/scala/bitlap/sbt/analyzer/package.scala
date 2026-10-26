@@ -83,11 +83,11 @@ def findModule(project: Project, projectPath: String): Module = {
 }
 
 /** Resolve the imported sbt project reference; display/qualified IDEA names are intentionally ignored. */
-def sbtProjectId(project: Project, data: ModuleData): String = {
+def sbtProjectSelector(project: Project, data: ModuleData): String = {
   val module = findModule(project, data)
   Option(module)
     .flatMap(org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId)
-    .map(_.id)
+    .map(ref => bitlap.sbt.analyzer.util.SbtProjectReference(ref.uri, ref.id).selector)
     .getOrElse(throw new IllegalArgumentException(s"No imported sbt project identity for ${data.getModuleName}"))
 }
 

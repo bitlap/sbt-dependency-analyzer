@@ -40,7 +40,7 @@ trait SbtShellDependencyAnalysisTask:
     scope: DependencyScopeEnum
   )(buildNodeFunc: String => DependencyScopeNode): DependencyScopeNode = {
     val shellCommunication = SbtShellCommunication.forProject(project)
-    val moduleId           = sbtProjectId(project, moduleData)
+    val moduleId           = sbtProjectSelector(project, moduleData)
     val promise            = Promise[Boolean]()
     val file               = moduleData.getLinkedExternalProjectPath + analysisFilePath(scope, dependencyGraphType)
 

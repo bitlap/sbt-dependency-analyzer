@@ -73,7 +73,7 @@
 
 确认 sbt 导入已完成，以及模块的 `organization` 设置正确；必要时设置 [Organization 覆盖值](#settings)。模块名查询不要求项目加入根项目的 `aggregate` 或 `dependsOn`。
 
-多个独立构建请分别在不同 IDEA 项目中打开。单个 IDEA 项目内的分析使用活动 sbt shell，来自其他 shell 根目录的模块会被拒绝。
+通过 sbt `RootProject` 或 `ProjectRef` 加载的外部构建可以在同一个 sbt shell 中分析。插件使用构建 URI 和项目 ID 定位，同名项目不会混淆。活动 shell 未加载的独立链接构建，请分别在不同 IDEA 项目中打开。
 
 ### 出现 “Could not create lock for …”
 

@@ -24,7 +24,7 @@ final class SbtRefreshSnapshotDependenciesAction extends BaseRefreshDependencies
       .flatMap(d =>
         d.getData match {
           case module: com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency.Data.Module =>
-            Option(module.getUserData(Module_Data)).map(sbtProjectId(project, _))
+            Option(module.getUserData(Module_Data)).map(sbtProjectSelector(project, _))
           case _ => None
         }
       )

@@ -16,8 +16,7 @@ class RefreshSnapshotsTask extends SbtShellOutputAnalysisTask[Unit] {
 
   def executeForModule(project: Project, moduleId: String): Unit = {
     val prefix                      = if (moduleId.isEmpty) "" else s"$moduleId / "
-    val escaped                     = moduleId.replace("\\", "\\\\").replace("\"", "\\\"")
-    val settingScope                = if (moduleId.isEmpty) "" else s"LocalProject(\"$escaped\") / "
+    val settingScope                = bitlap.sbt.analyzer.util.SbtProjectReference.settingScope(moduleId)
     def session(): Map[Int, String] = RefreshSnapshotsTask.sessionSettings(commandOutput(project, "session list"))
     val before                      = session()
     val settings                    = List(s"${settingScope}update / skip := false") ++

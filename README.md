@@ -73,7 +73,7 @@ Wait for indexing and check the selected module and scope. The plugin does not i
 
 Finish sbt import and check the modules' `organization` settings. Set an [Organization override](#settings) if needed. Module-name discovery does not require membership in the root project's `aggregate` or `dependsOn`.
 
-Open independent builds in separate IDEA projects. Analysis within one IDEA project uses the active sbt shell and rejects modules from another shell root.
+Builds loaded through sbt `RootProject` or `ProjectRef` can be analyzed in the same sbt shell. The analyzer uses each project’s build URI and ID, keeping same-named projects in different builds separate. Independently linked builds that the active shell has not loaded should be opened in separate IDEA projects.
 
 ### “Could not create lock for …”
 

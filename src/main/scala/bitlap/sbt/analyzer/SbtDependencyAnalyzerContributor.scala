@@ -50,6 +50,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
 
   @volatile
   private var moduleIdArtifactIds: Map[String, String] = Map.empty
+  @volatile private var loadedProjects                 = Option.empty[Set[bitlap.sbt.analyzer.util.SbtProjectReference]]
 
   private lazy val projects: ConcurrentHashMap[DependencyAnalyzerProject, ModuleNode] =
     ConcurrentHashMap[DependencyAnalyzerProject, ModuleNode]()
@@ -79,6 +80,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     dependencyMap.clear()
     organization = Map.empty
     moduleIdArtifactIds = Map.empty
+    loadedProjects = None
   }
 
   override def getDependencies(
@@ -308,25 +310,37 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     if (moduleData.getModuleName == Constants.PROJECT) return Collections.emptyList()
     val module = findModule(project, moduleData)
     if (module == null || module.isDisposed) return Collections.emptyList()
-    val rootPath  = Option(ExternalSystemApiUtil.getExternalRootProjectPath(module))
-    val shellRoot = Path.of(SbtUtils.getWorkingDirPath(project)).toAbsolutePath.normalize()
-    if (rootPath.exists(p => Path.of(p).toAbsolutePath.normalize() != shellRoot))
+    val revision = generation.get()
+    val moduleId = sbtProjectSelector(project, moduleData)
+    val loaded   = loadedProjects.getOrElse {
+      val result = new bitlap.sbt.analyzer.task.LoadedSbtProjectsTask().executeCommand(project)
+      if (revision == generation.get()) loadedProjects = Some(result)
+      result
+    }
+    val accessible = projects
+      .values()
+      .asScala
+      .filter(d =>
+        bitlap.sbt.analyzer.util.SbtProjectReference
+          .fromSelector(sbtProjectSelector(project, d))
+          .exists(loaded.contains)
+      )
+      .toList
+    if (!bitlap.sbt.analyzer.util.SbtProjectReference.fromSelector(moduleId).exists(loaded.contains))
       throw new IllegalArgumentException(
-        "This linked build is not served by the active sbt shell; open it in a separate IDE project to analyze it"
+        "This linked build is not loaded by the active sbt shell; open it in a separate IDE project to analyze it"
       )
 
-    val key    = moduleData.getId
+    val key    = moduleId
     val ttl    = SettingsState.getSettings(project).fileCacheTimeout.toLong * 1000
     val cached = configurationNodesMap.get(key)
     if (cached != null && ttl > 0 && System.currentTimeMillis() - cached.created < ttl) return cached.nodes
-    val revision = generation.get()
-    val moduleId = sbtProjectId(project, moduleData)
-    // Query every imported module directly: aggregate/dependsOn membership is not required.
-    projects.values().asScala.foreach(d => getModuleIdArtifactIds(project, sbtProjectId(project, d)))
+    // Query imported projects only when their build is actually loaded by this shell.
+    accessible.foreach(d => getModuleIdArtifactIds(project, sbtProjectSelector(project, d)))
     val nodes = moduleData.loadDependencies(
       project,
       getOrganization(moduleId),
-      projects.values().asScala.map(d => sbtProjectId(project, d) -> d.getLinkedExternalProjectPath).toMap,
+      accessible.map(d => sbtProjectSelector(project, d) -> d.getLinkedExternalProjectPath).toMap,
       moduleIdArtifactIds,
       hasNotified
     )
@@ -402,7 +416,7 @@ object SbtDependencyAnalyzerContributor:
       hasNotified: AtomicBoolean
     ): JList[DependencyScopeNode] =
       val module   = findModule(project, moduleData)
-      val moduleId = sbtProjectId(project, moduleData)
+      val moduleId = sbtProjectSelector(project, moduleData)
 
       if (DependencyUtils.canIgnoreModule(module)) return Collections.emptyList()
 
