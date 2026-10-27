@@ -3,7 +3,7 @@
     <id>org.bitlap.sbtDependencyAnalyzer</id>
     <name>Sbt Dependency Analyzer</name>
     <!--  will be added by sbt plugin build  -->
-    <version>0.11.0</version>
+    <version>0.12.0</version>
     <vendor url="https://github.com/bitlap/sbt-dependency-analyzer" email="dreamylost@outlook.com">Bitlap
     </vendor>
     <!-- please see https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html for description -->
@@ -145,7 +145,7 @@
 
     <change-notes>
         <![CDATA[
-            <h1>0.11.0</h1>
+            <h1>0.12.0</h1>
             <h2>Dependency analysis</h2>
             <ul>
                 <li>Faster graph loading, responsive filtering and background JAR size calculation.</li>

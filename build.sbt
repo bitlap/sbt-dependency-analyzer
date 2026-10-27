@@ -14,7 +14,7 @@ lazy val jbAnnotVersion        = "26.0.2"
 
 // Override IDEA_BUILD to validate another IntelliJ platform explicitly.
 lazy val intellijVersion = sys.env.getOrElse("IDEA_BUILD", "261.25134.95")
-lazy val pluginVersion   = "0.11.0"
+lazy val pluginVersion   = "0.12.0"
 
 lazy val gradleAnalyzerTest =
   taskKey[Unit]("Check Gradle analyzer visibility and dynamic restoration in an isolated IDE")
