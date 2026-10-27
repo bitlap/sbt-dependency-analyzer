@@ -60,7 +60,7 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
     }
     DefaultActionGroup group = (DefaultActionGroup) manager.getAction("Gradle.View.ActionsToolbar.OtherActionsPanel");
     check("existing toolbar references use override",
-        java.util.Arrays.stream(group.getChildren((AnActionEvent) null)).anyMatch(child -> child == action));
+        java.util.Arrays.stream(group.getChildren(manager)).anyMatch(child -> child == action));
   }
 
   private void sbtContexts(ActionManager manager) throws Exception {
@@ -95,6 +95,90 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
     }
   }
 
+  private AnAction official(ActionManager manager, AnAction wrapper) {
+    AnAction base = ((ActionManagerImpl) manager).getBaseAction((OverridingAction) wrapper);
+    if (base instanceof ActionStub stub) {
+      base = com.intellij.openapi.application.ApplicationManager.getApplication()
+          .instantiateClass(stub.getClassName(), stub.getPlugin());
+      stub.initAction(base);
+    }
+    return base;
+  }
+
+  private void popupContexts(ActionManager manager) throws Exception {
+    Path directory = Files.createTempDirectory(Path.of(System.getProperty("idea.system.path")), "popup-project-");
+    var project = com.intellij.openapi.project.ex.ProjectManagerEx.getInstanceEx().openProject(directory,
+        com.intellij.ide.impl.OpenProjectTask.build().asNewProject().withProjectName("Popup compatibility"));
+    if (project == null) throw new AssertionError("Cannot create popup project");
+    try {
+      var owner = new ProjectSystemId("SBT");
+      var pd = new com.intellij.openapi.externalSystem.model.project.ProjectData(owner, "popup-root", directory.toString(), directory.toString());
+      var md = new com.intellij.openapi.externalSystem.model.project.ModuleData("popup-module", owner, "JAVA_MODULE", "popup-module", directory.toString(), directory.toString());
+      com.intellij.openapi.module.Module[] holder = new com.intellij.openapi.module.Module[1];
+      com.intellij.openapi.application.ApplicationManager.getApplication().runWriteAction(() -> {
+        var module = com.intellij.openapi.module.ModuleManager.getInstance(project).newModule(directory.resolve("popup-module.iml"), "JAVA_MODULE");
+        com.intellij.openapi.externalSystem.ExternalSystemModulePropertyManager.getInstance(module).setExternalOptions(owner, md, pd);
+        holder[0] = module;
+      });
+      var module = holder[0];
+      var structure = new com.intellij.openapi.externalSystem.view.ExternalProjectsStructure(project, new com.intellij.ui.treeStructure.Tree());
+      com.intellij.openapi.util.Disposer.register(project, structure);
+      var view = (com.intellij.openapi.externalSystem.view.ExternalProjectsView) java.lang.reflect.Proxy.newProxyInstance(
+          getClass().getClassLoader(), new Class[]{com.intellij.openapi.externalSystem.view.ExternalProjectsView.class},
+          (proxy, method, args) -> switch (method.getName()) {
+            case "getProject" -> project;
+            case "getStructure" -> structure;
+            case "getSystemId" -> owner;
+            default -> method.getReturnType() == boolean.class ? false : null;
+          });
+      structure.init(view);
+      var node = new com.intellij.openapi.externalSystem.view.ModuleNode(view,
+          new com.intellij.openapi.externalSystem.model.DataNode<>(com.intellij.openapi.externalSystem.model.ProjectKeys.MODULE, md, null), null, true);
+      var child = new com.intellij.openapi.externalSystem.view.ExternalSystemNode<Object>(view, node) {};
+      var projectNode = new com.intellij.openapi.externalSystem.view.ProjectNode(view,
+          new com.intellij.openapi.externalSystem.model.DataNode<>(com.intellij.openapi.externalSystem.model.ProjectKeys.PROJECT, pd, null));
+      for (String actionId : new String[]{"Gradle.ViewDependencyAnalyzer", "Gradle.ProjectViewDependencyAnalyzer"}) {
+        AnAction action = manager.getAction(actionId);
+        check(actionId + " popup override registered", action != null && action.getClass().getName().equals(WRAPPER));
+        AnAction base = official(manager, action);
+        for (var selected : java.util.Arrays.asList(node, child, projectNode, null)) {
+          for (String system : new String[]{"SBT", "GRADLE", "MAVEN", null}) {
+            var context = SimpleDataContext.builder().add(CommonDataKeys.PROJECT, project)
+                .add(LangDataKeys.MODULE, module).add(LangDataKeys.MODULE_CONTEXT_ARRAY, new com.intellij.openapi.module.Module[]{module});
+            if (selected != null) context.add(ExternalSystemDataKeys.SELECTED_NODES, java.util.List.of(selected));
+            if (system != null) context.add(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID, new ProjectSystemId(system));
+            var data = context.build();
+            var event = AnActionEvent.createEvent(action, data, null, "ExternalSystemView", ActionUiKind.POPUP, null);
+            var originalEvent = AnActionEvent.createEvent(base, data, null, "ExternalSystemView", ActionUiKind.POPUP, null);
+            base.update(originalEvent);
+            action.update(event);
+            String label = actionId + " " + (selected == null ? "IDE module" : selected.getClass().getSimpleName()) + " " + system;
+            if (system == null || system.equals("SBT")) {
+              if (actionId.equals("Gradle.ViewDependencyAnalyzer") && (selected == node || selected == child))
+                check(label + " original exposes the erroneous entry", originalEvent.getPresentation().isEnabledAndVisible());
+              check(label + " sbt popup hidden", !event.getPresentation().isVisible() && !event.getPresentation().isEnabled());
+              action.actionPerformed(event);
+              check(label + " invocation safely ignored", true);
+            } else {
+              check(label + " official visibility preserved", event.getPresentation().isVisible() == originalEvent.getPresentation().isVisible());
+              check(label + " official enabled state preserved", event.getPresentation().isEnabled() == originalEvent.getPresentation().isEnabled());
+            }
+            check(label + " text and icon preserved", event.getPresentation().getText().equals(originalEvent.getPresentation().getText()) &&
+                event.getPresentation().getIcon().equals(originalEvent.getPresentation().getIcon()));
+          }
+        }
+        for (String groupId : actionId.equals("Gradle.ViewDependencyAnalyzer")
+            ? new String[]{"Gradle.View.ProjectMenu", "Gradle.View.ModuleMenu", "Gradle.View.DependencyMenu"}
+            : new String[]{"ProjectViewPopupMenu"}) {
+          var group = (DefaultActionGroup) manager.getAction(groupId);
+          check(groupId + " uses popup override", java.util.Arrays.asList(group.getChildren(manager)).contains(action));
+        }
+      }
+    } finally {
+      com.intellij.openapi.project.ex.ProjectManagerEx.getInstanceEx().forceCloseProject(project);
+    }
+  }
+
   @Override
   public void main(List<String> args) {
     Path output = Path.of(System.getProperty("analyzer.compat.output"));
@@ -104,6 +188,8 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
       boolean withoutGradle = Boolean.getBoolean("analyzer.compat.withoutGradle");
       if (withoutGradle) {
         check("Gradle disabled: official action absent", manager.getAction(ACTION) == null);
+        check("Gradle disabled: view popup action absent", manager.getAction("Gradle.ViewDependencyAnalyzer") == null);
+        check("Gradle disabled: project popup action absent", manager.getAction("Gradle.ProjectViewDependencyAnalyzer") == null);
         check("Gradle disabled: sbt toolbar action remains registered", manager.getAction("Sbt.ToolbarDependencyAnalyzer") != null);
         check("Gradle disabled: sbt plugin loaded", PluginManagerCore.getPlugin(PluginId.getId("org.bitlap.sbtDependencyAnalyzer")) != null);
       } else {
@@ -112,6 +198,7 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
         try {
           contexts(manager);
           sbtContexts(manager);
+          popupContexts(manager);
           for (int cycle = 0; cycle < 2; cycle++) {
             PluginMainDescriptor descriptor = (PluginMainDescriptor) PluginManagerCore.getPlugin(PluginId.getId("org.bitlap.sbtDependencyAnalyzer"));
             check("dynamic unload " + cycle,
@@ -122,7 +209,11 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
             AnActionEvent e = event("SBT");
             restored.update(e);
             check("unload restores official visibility " + cycle, e.getPresentation().isVisible());
+            for (String popup : new String[]{"Gradle.ViewDependencyAnalyzer", "Gradle.ProjectViewDependencyAnalyzer"}) {
+              check(popup + " official restored " + cycle, manager.getAction(popup).getClass().getName().startsWith("org.jetbrains.plugins.gradle."));
+            }
             check("dynamic reload " + cycle, DynamicPlugins.INSTANCE.loadPlugin(descriptor));
+            popupContexts(manager);
             contexts(manager);
           }
         } finally {

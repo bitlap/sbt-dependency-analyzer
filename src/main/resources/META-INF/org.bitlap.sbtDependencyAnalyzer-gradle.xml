@@ -3,5 +3,11 @@
         <action id="Gradle.ToolbarDependencyAnalyzer"
                 overrides="true"
                 class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction"/>
+        <action id="Gradle.ViewDependencyAnalyzer"
+                overrides="true"
+                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction"/>
+        <action id="Gradle.ProjectViewDependencyAnalyzer"
+                overrides="true"
+                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction"/>
     </actions>
 </idea-plugin>
