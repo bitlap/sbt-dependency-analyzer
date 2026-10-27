@@ -18,7 +18,14 @@ python3 tools/upload-plugin.py --build --dry-run
 python3 tools/upload-plugin.py target/releases/SbtDependencyAnalyzer-0.12.0.zip --dry-run
 ```
 
-校验包含插件 ID、ZIP 结构、构建版本和包内版本、最新更新说明标题，以及测试启动器是否混入发布包。成功后打印文件路径、SHA-256、发布渠道和隐藏状态。校验不访问 Marketplace，也不需要令牌。签名配置见贡献指南。
+构建前和上传前都会检查发布信息：
+
+- `build.sbt` 的 `pluginVersion` 必须与源码 `src/main/resources/META-INF/plugin.xml` 的 `<version>` 一致，避免构建自动覆盖 XML 版本后掩盖漏改。
+- `<change-notes>` 必须包含与当前版本一致的最新 `<h1>`，该条目须有实际说明内容；有历史条目时，当前版本必须高于前一条版本（支持 RC 序号及 RC 转正式版）。检查以本地更新说明历史为基准，不查询 Marketplace 已发布版本。
+- 发布包中的版本和完整更新说明必须与源码一致，同版本旧包也会拒绝，提示重新构建。
+- 另检查插件 ID、ZIP 结构和测试启动器是否混入发布包。
+
+检查失败会以非零状态退出，并在调用上传 API 前停止。脚本不会自动修改版本号或更新说明，历史条目应保留，在顶部新增本次版本及内容。成功后打印文件路径、SHA-256、发布渠道和隐藏状态。校验不访问 Marketplace，也不需要令牌。签名配置见贡献指南。
 
 ## 上传
 
@@ -46,4 +53,4 @@ python3 tools/upload-plugin.py target/releases/SbtDependencyAnalyzer-0.12.0.zip 
 PYTHONDONTWRITEBYTECODE=1 python3 tools/test-upload-plugin.py
 ```
 
-测试使用临时插件包和模拟上传响应，覆盖默认不上传、包校验、Stable/自定义渠道、隐藏更新、令牌脱敏和失败处理，不向 Marketplace 发送上传请求。CI 同样执行这些离线测试。
+测试使用临时插件包和模拟上传响应，覆盖源码和包内版本一致性、更新说明缺失/空白/版本倒退、同版本旧包、RC 递增，以及默认不上传、包校验、Stable/自定义渠道、隐藏更新、令牌脱敏和失败处理，不向 Marketplace 发送上传请求。CI 同样执行这些离线测试。

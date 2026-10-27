@@ -34,6 +34,14 @@ class MarketplaceUploadTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         self.archive = self.root / 'plugin, with "quotes".zip'
         self.make_zip()
+        (self.root / "build.sbt").write_text(f'lazy val pluginVersion = "{VERSION}"')
+        self.source_xml = self.root / "src/main/resources/META-INF/plugin.xml"
+        self.source_xml.parent.mkdir(parents=True)
+        with zipfile.ZipFile(io.BytesIO(jar_bytes())) as jar:
+            self.source_xml.write_bytes(jar.read("META-INF/plugin.xml"))
+        patcher = mock.patch.object(tool, "ROOT", self.root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         self.directory.cleanup()
@@ -50,7 +58,7 @@ class MarketplaceUploadTests(unittest.TestCase):
 
     def test_plugin_identity_version_and_change_notes_must_match(self):
         for arguments, expected in [({"plugin_id": "different.plugin"}, "identity"),
-                                    ({"version": "old", "note_version": "old"}, "does not match"),
+                                    ({"version": "0.11.0", "note_version": "0.11.0"}, "does not match"),
                                     ({"note_version": "old"}, "change-notes"),
                                     ({"test_classes": True}, "test-only")]:
             with self.subTest(arguments=arguments):
@@ -92,6 +100,51 @@ class MarketplaceUploadTests(unittest.TestCase):
                 upload.assert_not_called()
                 self.assertIn("No upload was performed", output.getvalue())
                 self.assertIn("SHA-256:", output.getvalue())
+
+    def test_source_versions_must_match_before_build_or_upload(self):
+        self.source_xml.write_text(self.source_xml.read_text().replace(
+            f"<version>{VERSION}</version>", "<version>0.11.0</version>").replace(
+                f"<h1>{VERSION}</h1>", "<h1>0.11.0</h1>"))
+        with mock.patch.object(tool.subprocess, "run") as build, mock.patch.object(tool, "upload") as upload, \
+             contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(tool.main([str(self.archive), "--build", "--upload"]), 1)
+        self.assertIn("update both", errors.getvalue())
+        build.assert_not_called()
+        upload.assert_not_called()
+
+    def test_missing_empty_stale_and_non_incrementing_change_notes_are_rejected(self):
+        for notes in ("", "<h1>0.11.0</h1><p>Old</p>",
+                      f"<h1>{VERSION}</h1><ul><li> &nbsp; </li></ul><!-- TODO -->",
+                      f"<h1>{VERSION}</h1><h1>0.11.0</h1><p>Only old details</p>",
+                      f"<h1>{VERSION}</h1><p>New</p><h1>{VERSION}</h1><p>Old</p>",
+                      f"<h1>{VERSION}</h1><p>New</p><h1>0.13.0</h1><p>Old</p>"):
+            with self.subTest(notes=notes):
+                xml = tool.ET.parse(self.source_xml).getroot()
+                xml.find("change-notes").text = notes
+                tool.ET.ElementTree(xml).write(self.source_xml)
+                with mock.patch.object(tool, "upload") as upload, contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(tool.main([str(self.archive), "--upload"]), 1)
+                upload.assert_not_called()
+
+    def test_new_entry_preserves_history_and_release_order_handles_rc_versions(self):
+        xml = tool.ET.parse(self.source_xml).getroot()
+        for current, previous in [("0.12.0", "0.11.0"), ("0.12.0", "0.12.0-RC2"),
+                                  ("0.12.0-RC10", "0.12.0-RC2")]:
+            xml.find("version").text = current
+            xml.find("change-notes").text = f"<h1>{current}</h1><p>New</p><h1>{previous}</h1><p>History</p>"
+            before = tool.ET.tostring(xml)
+            self.assertEqual(tool.release_metadata(xml)[1], current)
+            self.assertEqual(tool.ET.tostring(xml), before)
+
+    def test_same_version_with_stale_packaged_notes_requires_rebuild(self):
+        xml = tool.ET.parse(self.source_xml).getroot()
+        xml.find("change-notes").text = f"<h1>{VERSION}</h1><p>Updated release details</p>"
+        tool.ET.ElementTree(xml).write(self.source_xml)
+        for mode in ("--dry-run", "--upload"):
+            with mock.patch.object(tool, "upload") as upload, contextlib.redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(tool.main([str(self.archive), mode]), 1)
+            self.assertIn("rebuild first", errors.getvalue())
+            upload.assert_not_called()
 
     def test_request_uses_official_endpoint_and_keeps_token_out_of_args_and_child_environment(self):
         requests = []

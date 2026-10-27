@@ -7,6 +7,7 @@ Official API: https://plugins.jetbrains.com/docs/marketplace/plugin-upload.html
 """
 import argparse
 import hashlib
+import html
 import io
 import os
 from pathlib import Path
@@ -25,14 +26,58 @@ MAX_SIZE = 400_000_000
 MAIN_JAR = "sbt-dependency-analyzer.jar"
 
 
-def project_version(root=ROOT):
+def project_version(root=None):
+    root = Path(root or ROOT)
     match = re.search(r'lazy val pluginVersion\s*=\s*"([^\"]+)"', (root / "build.sbt").read_text())
     if not match:
         raise ValueError("Cannot read pluginVersion from build.sbt")
     return match.group(1)
 
 
-def descriptor(jar_bytes):
+def normalize_notes(notes):
+    return re.sub(r"\s+", " ", notes).strip()
+
+
+def release_metadata(xml):
+    plugin_id = (xml.findtext("id") or "").strip()
+    version = (xml.findtext("version") or "").strip()
+    if plugin_id != PLUGIN_ID or not version:
+        raise ValueError(f"Unexpected plugin identity/version: {plugin_id!r}, {version!r}")
+    notes = xml.findtext("change-notes") or ""
+    clean_notes = re.sub(r"(?s)<!--.*?-->", "", notes)
+    headings = list(re.finditer(r"(?is)<h1\b[^>]*>(.*?)</h1\s*>", clean_notes))
+    if not headings:
+        raise ValueError("change-notes must contain a latest release <h1> heading")
+    if headings[0].group(1).strip() != version:
+        raise ValueError("Latest change-notes version differs from the plugin version")
+    section = clean_notes[headings[0].end():headings[1].start() if len(headings) > 1 else len(clean_notes)]
+    if not html.unescape(re.sub(r"<[^>]*>", "", section)).strip():
+        raise ValueError("Latest change-notes entry must contain release details")
+    # Numeric release order, with a final release ordered after its RC/build qualifiers.
+    def number(value):
+        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z0-9][A-Za-z0-9.-]*))?", value)
+        if not match:
+            raise ValueError(f"Invalid release version in change-notes: {value!r}")
+        qualifier = match.group(4)
+        parts = tuple((0, int(p)) if p.isdigit() else (1, p.lower())
+                      for p in re.findall(r"\d+|[^\d]+", qualifier or ""))
+        return tuple(int(match.group(i)) for i in (1, 2, 3)), qualifier is None, parts
+    current = number(version)
+    if len(headings) > 1 and current <= number(headings[1].group(1).strip()):
+        raise ValueError("Latest version must increase over the previous change-notes release")
+    return plugin_id, version, notes
+
+
+def project_release():
+    expected = project_version()
+    source = ROOT / "src/main/resources/META-INF/plugin.xml"
+    _, version, notes = release_metadata(ET.parse(source).getroot())
+    if version != expected:
+        raise ValueError(f"Source plugin.xml version {version!r} differs from build.sbt {expected!r}; update both")
+    return expected, notes
+
+
+def descriptor(jar_bytes, expected_notes=None):
     with zipfile.ZipFile(io.BytesIO(jar_bytes)) as jar:
         info = jar.getinfo("META-INF/plugin.xml")
         if info.file_size > 1_000_000:
@@ -40,17 +85,13 @@ def descriptor(jar_bytes):
         xml = ET.fromstring(jar.read(info))
         if any("AnalyzerSmokeStarter" in n or "GradleAnalyzerCompatibilityStarter" in n for n in jar.namelist()):
             raise ValueError("Distribution includes test-only IDE starters")
-    plugin_id = (xml.findtext("id") or "").strip()
-    version = (xml.findtext("version") or "").strip()
-    if plugin_id != PLUGIN_ID or not version:
-        raise ValueError(f"Unexpected plugin identity/version: {plugin_id!r}, {version!r}")
-    heading = re.search(r"(?is)<h1\b[^>]*>(.*?)</h1\s*>", xml.findtext("change-notes") or "")
-    if heading and heading.group(1).strip() != version:
-        raise ValueError("Latest change-notes version differs from the packaged plugin version")
+    plugin_id, version, notes = release_metadata(xml)
+    if expected_notes is not None and normalize_notes(notes) != normalize_notes(expected_notes):
+        raise ValueError("Packaged change-notes differ from source plugin.xml; rebuild first")
     return plugin_id, version
 
 
-def validate_archive(path, expected_version):
+def validate_archive(path, expected_version, expected_notes=None):
     path = Path(path).resolve()
     if path.suffix.lower() != ".zip" or not path.is_file():
         raise ValueError(f"Expected a plugin distribution ZIP: {path}")
@@ -65,7 +106,7 @@ def validate_archive(path, expected_version):
             raise ValueError("ZIP must contain one plugin root with lib/sbt-dependency-analyzer.jar")
         if jars[0].file_size > MAX_SIZE:
             raise ValueError("Plugin JAR exceeds the upload limit")
-        plugin_id, version = descriptor(archive.read(jars[0]))
+        plugin_id, version = descriptor(archive.read(jars[0]), expected_notes)
         bad_entry = archive.testzip()
         if bad_entry:
             raise ValueError(f"Corrupt ZIP entry: {bad_entry}")
@@ -74,15 +115,15 @@ def validate_archive(path, expected_version):
     return plugin_id, version
 
 
-def prepare_artifact(source, expected_version, output_dir):
+def prepare_artifact(source, expected_version, output_dir, expected_notes=None):
     source = Path(source).resolve()
     if not source.is_dir():
-        validate_archive(source, expected_version)
+        validate_archive(source, expected_version, expected_notes)
         return source
     jar = source / "lib" / MAIN_JAR
     if not jar.is_file():
         raise ValueError(f"No packaged plugin at {source}; run sbt packageArtifact or use --build")
-    _, version = descriptor(jar.read_bytes())
+    _, version = descriptor(jar.read_bytes(), expected_notes)
     if version != expected_version:
         raise ValueError(f"Packaged version {version!r} differs from build.sbt {expected_version!r}; rebuild first")
     output_dir = Path(output_dir)
@@ -95,7 +136,7 @@ def prepare_artifact(source, expected_version, output_dir):
                 if file.is_file():
                     archive.write(file, file.relative_to(source.parent))
         temporary.replace(result)
-        validate_archive(result, expected_version)
+        validate_archive(result, expected_version, expected_notes)
     finally:
         temporary.unlink(missing_ok=True)
     return result.resolve()
@@ -149,13 +190,14 @@ def main(argv=None):
     mode.add_argument("--dry-run", action="store_true", help="Explicitly validate/package only, without a token or network upload")
     args = parser.parse_args(argv)
     try:
+        expected, notes = project_release()
         if args.build:
             if not shutil.which(args.sbt):
                 raise ValueError("sbt executable not found; add it to PATH or specify --sbt /path/to/sbt")
             subprocess.run([args.sbt, "packageArtifact"], cwd=ROOT, check=True)
-        expected = project_version()
-        archive = prepare_artifact(args.artifact, expected, ROOT / "target/releases")
-        plugin_id, version = validate_archive(archive, expected)
+        expected, notes = project_release()
+        archive = prepare_artifact(args.artifact, expected, ROOT / "target/releases", notes)
+        plugin_id, version = validate_archive(archive, expected, notes)
         checksum = hashlib.sha256()
         with archive.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
