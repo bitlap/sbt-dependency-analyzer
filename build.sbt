@@ -16,6 +16,9 @@ lazy val jbAnnotVersion        = "26.0.2"
 lazy val intellijVersion = sys.env.getOrElse("IDEA_BUILD", "261.25134.95")
 lazy val pluginVersion   = "0.11.0"
 
+lazy val gradleAnalyzerTest =
+  taskKey[Unit]("Check Gradle analyzer visibility and dynamic restoration in an isolated IDE")
+
 /** Runs real PSI and Swing checks in an isolated IDE process; results are written under target/smoke. */
 lazy val psiTest = taskKey[Unit]("Run isolated Scala PSI and menu regression tests")
 
@@ -122,6 +125,18 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
     ),
     Compile / unmanagedResourceDirectories += baseDirectory.value / "src" / "main" / "resources",
     Test / unmanagedResourceDirectories += baseDirectory.value / "src" / "test" / "resources",
+    gradleAnalyzerTest := {
+      val compiled = (Test / compile).value
+      val packaged = packageArtifact.value
+      val sdk      = (ThisBuild / intellijBaseDirectory).value
+      val result   = Process(
+        Seq("python3", "tools/test-gradle-analyzer.py"),
+        baseDirectory.value,
+        "IDE_HOME"         -> sdk.getAbsolutePath,
+        "TEST_CLASSES_DIR" -> (Test / classDirectory).value.getAbsolutePath
+      ).!
+      if (result != 0) sys.error("Gradle analyzer compatibility checks failed; see target/gradle-analyzer-compat")
+    },
     Test / javaOptions += s"-Danalyzer.classes.dir=${(Compile / classDirectory).value.getAbsolutePath}",
     patchPluginXml := pluginXmlOptions.apply { (x: org.jetbrains.sbtidea.pluginXmlOptions) =>
       {

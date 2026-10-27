@@ -53,7 +53,7 @@ jobs:
       - uses: sbt/setup-sbt@v1
       - uses: coursier/cache-action@v8
       - name: Test
-        run: sbt test psiTest
+        run: sbt test psiTest gradleAnalyzerTest
       - name: Verify real sbt workflows
         run: python3 tools/test-sbt-workflows.py
   

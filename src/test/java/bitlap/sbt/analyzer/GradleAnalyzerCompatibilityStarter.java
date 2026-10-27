@@ -1,0 +1,147 @@
+package bitlap.sbt.analyzer;
+
+import com.intellij.ide.plugins.DynamicPlugins;
+import com.intellij.ide.plugins.PluginMainDescriptor;
+import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.actionSystem.impl.ActionManagerImpl;
+import com.intellij.openapi.actionSystem.impl.SimpleDataContext;
+import com.intellij.openapi.application.ApplicationStarter;
+import com.intellij.openapi.extensions.PluginId;
+import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys;
+import com.intellij.openapi.externalSystem.model.ProjectSystemId;
+import com.intellij.openapi.util.registry.Registry;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+/** Runs against real registered actions in an isolated IDE; does not depend on the analyzer plugin classloader. */
+public final class GradleAnalyzerCompatibilityStarter implements ApplicationStarter {
+  private static final String ACTION = "Gradle.ToolbarDependencyAnalyzer";
+  private static final String WRAPPER = "bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction";
+  private final StringBuilder results = new StringBuilder();
+
+  private void check(String name, boolean condition) {
+    if (!condition) throw new AssertionError(name);
+    results.append("PASS ").append(name).append('\n');
+  }
+
+  private AnActionEvent event(String system) {
+    DataContext context = system == null ? DataContext.EMPTY_CONTEXT : SimpleDataContext.builder()
+        .add(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID, new ProjectSystemId(system)).build();
+    AnAction action = ActionManager.getInstance().getAction(ACTION);
+    return AnActionEvent.createEvent(action, context, null, "ExternalSystemView", ActionUiKind.TOOLBAR, null);
+  }
+
+  private void contexts(ActionManager manager) {
+    AnAction action = manager.getAction(ACTION);
+    check("override is registered", action != null && action.getClass().getName().equals(WRAPPER));
+    for (String system : new String[]{"SBT", "GRADLE", "MAVEN", null}) {
+      AnActionEvent e = event(system);
+      action.update(e);
+      check("visibility in " + system, e.getPresentation().isVisible() == !"SBT".equals(system));
+      check("enabled state in " + system, e.getPresentation().isEnabled() == !"SBT".equals(system));
+      check("presentation retained in " + system,
+          e.getPresentation().getIcon() != null && e.getPresentation().getText() != null);
+    }
+    AnAction base = ((ActionManagerImpl) manager).getBaseAction((OverridingAction) action);
+    check("base is the official Gradle action", base != null && (base instanceof ActionStub ? ((ActionStub) base).getClassName() : base.getClass().getName()).startsWith("org.jetbrains.plugins.gradle."));
+    check("override uses compatibility plugin classloader",
+        PluginManagerCore.getPlugin(PluginId.getId("org.bitlap.sbtDependencyAnalyzer")).getPluginClassLoader() == action.getClass().getClassLoader());
+    // Registry gating remains part of the inherited platform action update.
+    Registry.get("external.system.dependency.analyzer").setValue(false);
+    try {
+      AnActionEvent e = event("GRADLE");
+      action.update(e);
+      check("platform registry switch is preserved", !e.getPresentation().isVisible());
+    } finally {
+      Registry.get("external.system.dependency.analyzer").setValue(true);
+    }
+    DefaultActionGroup group = (DefaultActionGroup) manager.getAction("Gradle.View.ActionsToolbar.OtherActionsPanel");
+    check("existing toolbar references use override",
+        java.util.Arrays.stream(group.getChildren((AnActionEvent) null)).anyMatch(child -> child == action));
+  }
+
+  private void sbtContexts(ActionManager manager) throws Exception {
+    var project = com.intellij.openapi.project.ProjectManager.getInstance().getDefaultProject();
+    ClassLoader loader = PluginManagerCore.getPlugin(PluginId.getId("org.bitlap.sbtDependencyAnalyzer")).getPluginClassLoader();
+    Class<?> settingsType = loader.loadClass("org.jetbrains.sbt.settings.SbtSettings");
+    Object settings = settingsType.getMethod("getInstance", com.intellij.openapi.project.Project.class).invoke(null, project);
+    var getLinked = settingsType.getMethod("getLinkedProjectsSettings");
+    var setLinked = settingsType.getMethod("setLinkedProjectsSettings", java.util.Collection.class);
+    var previous = new java.util.ArrayList<>((java.util.Collection<?>) getLinked.invoke(settings));
+    Object linked = loader.loadClass("org.jetbrains.sbt.project.settings.SbtProjectSettings").getConstructor().newInstance();
+    linked.getClass().getMethod("setExternalProjectPath", String.class).invoke(linked, System.getProperty("idea.system.path"));
+    try {
+      setLinked.invoke(settings, java.util.List.of(linked));
+      AnAction action = manager.getAction("Sbt.ToolbarDependencyAnalyzer");
+      for (String system : new String[]{"SBT", "GRADLE", "MAVEN", null}) {
+        var builder = SimpleDataContext.builder().add(CommonDataKeys.PROJECT, project);
+        if (system != null) builder.add(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID, new ProjectSystemId(system));
+        AnActionEvent e = AnActionEvent.createEvent(action, builder.build(), null, "ExternalSystemView", ActionUiKind.TOOLBAR, null);
+        action.update(e);
+        check("sbt entry in linked-project context " + system,
+            e.getPresentation().isVisible() == (system == null || system.equals("SBT")));
+      }
+      setLinked.invoke(settings, java.util.List.of());
+      AnActionEvent e = AnActionEvent.createEvent(action,
+          SimpleDataContext.builder().add(CommonDataKeys.PROJECT, project).build(), null,
+          "ExternalSystemView", ActionUiKind.TOOLBAR, null);
+      action.update(e);
+      check("sbt entry absent without linked build", !e.getPresentation().isVisible());
+    } finally {
+      setLinked.invoke(settings, previous);
+    }
+  }
+
+  @Override
+  public void main(List<String> args) {
+    Path output = Path.of(System.getProperty("analyzer.compat.output"));
+    int exitCode = 0;
+    try {
+      ActionManager manager = ActionManager.getInstance();
+      boolean withoutGradle = Boolean.getBoolean("analyzer.compat.withoutGradle");
+      if (withoutGradle) {
+        check("Gradle disabled: official action absent", manager.getAction(ACTION) == null);
+        check("Gradle disabled: sbt toolbar action remains registered", manager.getAction("Sbt.ToolbarDependencyAnalyzer") != null);
+        check("Gradle disabled: sbt plugin loaded", PluginManagerCore.getPlugin(PluginId.getId("org.bitlap.sbtDependencyAnalyzer")) != null);
+      } else {
+        boolean previous = Registry.is("external.system.dependency.analyzer");
+        Registry.get("external.system.dependency.analyzer").setValue(true);
+        try {
+          contexts(manager);
+          sbtContexts(manager);
+          for (int cycle = 0; cycle < 2; cycle++) {
+            PluginMainDescriptor descriptor = (PluginMainDescriptor) PluginManagerCore.getPlugin(PluginId.getId("org.bitlap.sbtDependencyAnalyzer"));
+            check("dynamic unload " + cycle,
+                DynamicPlugins.INSTANCE.unloadPlugin(descriptor, new DynamicPlugins.UnloadPluginOptions().withDisable(false)));
+            AnAction restored = manager.getAction(ACTION);
+            check("official action restored " + cycle,
+                restored != null && restored.getClass().getName().startsWith("org.jetbrains.plugins.gradle."));
+            AnActionEvent e = event("SBT");
+            restored.update(e);
+            check("unload restores official visibility " + cycle, e.getPresentation().isVisible());
+            check("dynamic reload " + cycle, DynamicPlugins.INSTANCE.loadPlugin(descriptor));
+            contexts(manager);
+          }
+        } finally {
+          Registry.get("external.system.dependency.analyzer").setValue(previous);
+        }
+      }
+    } catch (Throwable error) {
+      exitCode = 1;
+      error.printStackTrace();
+      results.append("FAIL ").append(error).append('\n');
+    }
+    try {
+      Files.createDirectories(output.getParent());
+      Files.writeString(output, results);
+      System.out.print(results);
+    } catch (Exception error) {
+      error.printStackTrace();
+      exitCode = 1;
+    }
+    System.exit(exitCode);
+  }
+}

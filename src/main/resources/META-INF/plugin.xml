@@ -15,6 +15,7 @@
     <depends>org.intellij.scala</depends>
     <depends>com.intellij.properties</depends>
     <depends>com.intellij.modules.externalSystem</depends>
+    <depends optional="true" config-file="org.bitlap.sbtDependencyAnalyzer-gradle.xml">com.intellij.gradle</depends>
     <resource-bundle>messages.SbtDependencyAnalyzerBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
