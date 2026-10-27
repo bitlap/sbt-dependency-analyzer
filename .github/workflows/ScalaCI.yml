@@ -54,6 +54,8 @@ jobs:
       - uses: coursier/cache-action@v8
       - name: Test
         run: sbt test psiTest gradleAnalyzerTest
+      - name: Test Marketplace uploader (offline)
+        run: PYTHONDONTWRITEBYTECODE=1 python3 tools/test-upload-plugin.py
       - name: Verify real sbt workflows
         run: python3 tools/test-sbt-workflows.py
   

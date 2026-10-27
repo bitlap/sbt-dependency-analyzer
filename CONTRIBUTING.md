@@ -36,6 +36,10 @@ The [core workflow matrix](docs/testing.md) maps behavior to automated tests and
 - Refresh snapshots with pre-existing shell session settings; ensure only action-created settings are removed, including update failure.
 - Check multiple open projects and close/reopen them to verify cache isolation and disposal.
 
+## Marketplace upload
+
+See [发布到 JetBrains Marketplace](docs/publishing.md) for the official upload script, local validation and token setup. Uploading requires an explicit `--upload`; ordinary builds and validation do not publish.
+
 ## Release signing
 
 Signing is disabled for normal builds. For a release set `SIGN_PLUGIN=true`, `PLUGIN_SIGN_CERT_FILE`, `PLUGIN_SIGN_PRIVATE_KEY_FILE` and `PLUGIN_SIGN_KEY_PWD` in the release environment. Do not commit credentials or local certificate paths. CI runs tests, formatting and Plugin Verifier; a passing compile alone is not a compatibility check.
