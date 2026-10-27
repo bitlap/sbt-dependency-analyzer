@@ -12,15 +12,19 @@ import org.jetbrains.plugins.scala.lang.psi.api.statements.ScPatternDefinition
 
 import com.intellij.psi.{ PsiElement, PsiFile }
 
-// copy from https://github.com/JetBrains/intellij-scala/blob/idea242.x/sbt/sbt-impl/src/org/jetbrains/sbt/language/utils/SbtDependencyTraverser.scala
-// we have changed some
+// Adapted from https://github.com/JetBrains/intellij-scala/blob/idea242.x/sbt/sbt-impl/src/org/jetbrains/sbt/language/utils/SbtDependencyTraverser.scala
+/** Traverses supported sbt dependency PSI for the legacy package-search helpers. Callbacks returning false stop descent
+ *  into that element. This traversal does not evaluate arbitrary Scala control flow. Adapted from JetBrains
+ *  intellij-scala SbtDependencyTraverser (idea242.x); analyzer declaration resolution uses SbtDeclarationResolver for
+ *  structural coordinate matching.
+ */
 object SbtDependencyTraverser {
 
   def traverseStringLiteral(stringLiteral: ScStringLiteral)(callback: PsiElement => Boolean): Unit =
     callback(stringLiteral)
 
   def traverseInfixExpr(infixExpr: ScInfixExpr)(callback: PsiElement => Boolean): Unit = {
-    if (!callback(infixExpr)) return
+    if (infixExpr == null || !callback(infixExpr)) return
 
     def traverse(expr: ScExpression): Unit = {
       expr match {
@@ -122,7 +126,8 @@ object SbtDependencyTraverser {
     }
   }
 
-  /** NOTE: not support `if Seq() + (if x else y)`
+  /** Visits supported Seq/List elements, references and parenthesized modifier receivers. Conditional branches and
+   *  arbitrary collection-producing expressions are not evaluated.
    */
   def traverseSeq(seq: ScMethodCall)(callback: PsiElement => Boolean): Unit = {
     if (!callback(seq)) return

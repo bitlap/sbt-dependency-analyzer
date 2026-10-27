@@ -39,6 +39,10 @@ import com.intellij.openapi.project.Project
 
 import kotlin.jvm.functions
 
+/** Adapts imported sbt projects and scoped DOT graphs to the IDE dependency analyzer. Project selectors include the
+ *  build URI. Model generations prevent an invalidated load from repopulating scope caches; sbt queries are performed
+ *  by the background loading path.
+ */
 final class SbtDependencyAnalyzerContributor(project: Project) extends DependencyAnalyzerContributor {
 
   import SbtDependencyAnalyzerContributor.*
@@ -46,17 +50,42 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
   private val logger = Logger.getInstance(this.getClass)
 
   @volatile
-  private var organization: String = scala.compiletime.uninitialized
+  private var organization: Map[String, String] = Map.empty
 
   @volatile
   private var moduleIdArtifactIds: Map[String, String] = Map.empty
+  @volatile private var loadedProjects                 = Option.empty[SbtProjectReference.Inventory]
 
   private lazy val projects: ConcurrentHashMap[DependencyAnalyzerProject, ModuleNode] =
     ConcurrentHashMap[DependencyAnalyzerProject, ModuleNode]()
   private lazy val dependencyMap: ConcurrentHashMap[Long, Dependency] = ConcurrentHashMap[Long, Dependency]()
 
-  private lazy val configurationNodesMap: ConcurrentHashMap[String, JList[DependencyScopeNode]] =
-    ConcurrentHashMap[String, JList[DependencyScopeNode]]()
+  private case class ScopeCache(nodes: JList[DependencyScopeNode], created: Long)
+  private val configurationNodesMap = new ConcurrentHashMap[String, ScopeCache]()
+  private val generation            = new java.util.concurrent.atomic.AtomicLong()
+  private val hasNotified           = new AtomicBoolean(false)
+
+  private def enabledScopes: Seq[DependencyScopeEnum] = {
+    val settings = SettingsState.getSettings(project)
+    DependencyScopeEnum.values.toSeq.filter {
+      case DependencyScopeEnum.Compile  => !settings.disableAnalyzeCompile
+      case DependencyScopeEnum.Test     => !settings.disableAnalyzeTest
+      case DependencyScopeEnum.Provided => !settings.disableAnalyzeProvided
+    }
+  }
+
+  private def invalidate(deleteFiles: Boolean): Unit = {
+    generation.incrementAndGet()
+    if (deleteFiles)
+      projects.values().asScala.map(_.getLinkedExternalProjectPath).toSet.foreach(deleteExistAnalysisFiles)
+    AnalyzerCacheService.getInstance(project).clear()
+    projects.clear()
+    configurationNodesMap.clear()
+    dependencyMap.clear()
+    organization = Map.empty
+    moduleIdArtifactIds = Map.empty
+    loadedProjects = None
+  }
 
   override def getDependencies(
     externalProject: DependencyAnalyzerProject
@@ -72,8 +101,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
   ): JList[Dependency.Scope] = {
     val moduleData = projects.get(externalProject)
     if (moduleData == null) return Collections.emptyList()
-    getOrRefreshData(moduleData).asScala.map(_.toScope).asJava
-    ////    DependencyScope.values.toList.map(d => scope(d.toString.toLowerCase)).toList.asJava
+    enabledScopes.map(scope => toDAScope(scope.toString)).asJava
   }
 
   override def getProjects: JList[DependencyAnalyzerProject] = {
@@ -91,7 +119,14 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
           val rootModuleDataList = dataNodes.getOrElse(SbtModuleData.Key, Seq.empty).map(_.getData(SbtModuleData.Key))
           rootModuleDataList.foreach { moduleData =>
             // maybe null if IDEA cache
-            val module = findModule(project, moduleData.baseDirectory.getAbsolutePath)
+            val module = com.intellij.openapi.module.ModuleManager
+              .getInstance(project)
+              .getModules
+              .filterNot(DependencyUtils.canIgnoreModule)
+              .find(m =>
+                SbtUtil.getSbtModuleData(m).exists(d => d.id == moduleData.id && d.buildURI == moduleData.buildURI)
+              )
+              .getOrElse(null)
             if (module != null) {
               val externalProject   = DAProject(module, moduleData.id)
               val moduleDataNodeOpt = SbtUtil.getSbtModuleDataNode(module)
@@ -129,35 +164,43 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
   }
 
   override def whenDataChanged(listener: functions.Function0[kotlin.Unit], parentDisposable: Disposable): Unit = {
-    val progressManager = ExternalSystemProgressNotificationManager.getInstance()
-    progressManager.addNotificationListener(
-      new ExternalSystemTaskNotificationListener() {
-        override def onTaskOutput(id: ExternalSystemTaskId, text: String, outputType: ProcessOutputType): Unit = {}
-        override def onEnd(projectPath: String, id: ExternalSystemTaskId): Unit                                = {
-          if (id.getType == ExternalSystemTaskType.RESOLVE_PROJECT && id.getProjectSystemId == SbtProjectSystem.Id) {
-            // if dependencies have changed, we must delete all analysis files (.dot)
-            // however, this can only be used to monitor whether the view is open
-            projects
-              .values()
-              .asScala
-              .map(d => d.getLinkedExternalProjectPath)
-              .foreach(deleteExistAnalysisFiles)
-
-            projects.clear()
-            configurationNodesMap.clear()
-            dependencyMap.clear()
+    val connection = ApplicationManager.getApplication.getMessageBus.connect(parentDisposable)
+    connection.subscribe(
+      SettingsState._Topic,
+      new SettingsState.SettingsChangeListener {
+        override def onConfigurationChanged(changedProject: Project, settings: SettingsState): Unit = {
+          if (changedProject == project) { invalidate(deleteFiles = false); listener.invoke() }
+        }
+      }
+    )
+    connection.subscribe(
+      SbtReimportProject._Topic,
+      new SbtReimportProject.ReimportProjectListener {
+        override def onReimportProject(changedProject: Project): Unit = {
+          if (changedProject == project) { invalidate(deleteFiles = true); listener.invoke() }
+        }
+      }
+    )
+    AnalyzerCacheService
+      .getInstance(project)
+      .whenReimported(
+        parentDisposable,
+        new Runnable {
+          override def run(): Unit = {
+            invalidate(deleteFiles = false)
             listener.invoke()
           }
         }
-      },
-      parentDisposable
-    )
+      )
   }
 
   private def deleteExistAnalysisFiles(modulePath: String): Unit = {
     DependencyScopeEnum.values
       .map(scope => Path.of(modulePath + analysisFilePath(scope, summon[DependencyGraphType])))
-      .foreach(p => Files.deleteIfExists(p))
+      .foreach { p =>
+        try Files.deleteIfExists(p)
+        catch { case e: java.io.IOException => logger.warn(s"Cannot remove stale analysis file $p", e) }
+      }
   }
 
   private def getDependencies(
@@ -165,6 +208,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     scopeNodes: JList[DependencyScopeNode]
   ): JList[Dependency] = {
     if (scopeNodes.isEmpty) return Collections.emptyList()
+    dependencyMap.clear()
     val dependencies = ListBuffer[Dependency]()
     val root         = DAModule(moduleData.getModuleName)
     root.putUserData(Module_Data, moduleData)
@@ -172,6 +216,7 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
     val rootDependency = DADependency(root, DEFAULT_CONFIGURATION, null, Collections.emptyList())
     dependencies.append(rootDependency)
     for (scopeNode <- scopeNodes.asScala) {
+      dependencyMap.clear()
       val scope = scopeNode.toScope
       for (dependencyNode <- scopeNode.getDependencies.asScala) {
         addDependencies(rootDependency, scope, dependencyNode, dependencies, moduleData.getLinkedExternalProjectPath)
@@ -214,9 +259,14 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
         data.putUserData(Module_Data, moduleData)
         data
       case adn: ArtifactDependencyNode =>
-        val size  = SbtUtils.getLibrarySize(project, adn.getDisplayName)
-        val total = SbtUtils.getLibraryTotalSize(project, adn.getDependencies.asScala.toList)
-        SbtDAArtifact(adn.getGroup, adn.getModule, adn.getVersion, size, size + total)
+        SbtDAArtifact(
+          project,
+          adn.getGroup,
+          adn.getModule,
+          adn.getVersion,
+          () => SbtUtils.getLibrarySize(project, adn.getDisplayName),
+          () => SbtUtils.getLibraryTotalSize(project, List(adn))
+        )
       case _ => null
     }
   end getDependencyData
@@ -239,70 +289,83 @@ final class SbtDependencyAnalyzerContributor(project: Project) extends Dependenc
 
   }
 
-  private def getOrganization(project: Project): String =
-    if (organization != null) return organization
-
-    // we don't actively delete configurations
-    val settingsState = SettingsState.getSettings(project)
-    val org           = settingsState.organization
-    if (org != null && org != Constants.EMPTY_STRING) {
-      return org
+  private def getOrganization(moduleId: String): String = {
+    val configured = Option(SettingsState.getSettings(project).organization).map(_.trim).filter(_.nonEmpty)
+    configured.getOrElse {
+      organization.getOrElse(
+        moduleId, {
+          val value = new OrganizationTask().executeForModule(project, moduleId)
+          organization = organization.updated(moduleId, value)
+          value
+        }
+      )
     }
+  }
 
-    organization = SbtShellOutputAnalysisTask.organizationTask.executeCommand(project)
-    settingsState.organization = organization
-    organization
-  end getOrganization
-
-  private def getModuleIdArtifactIds(project: Project): Map[String, String] =
-    if (moduleIdArtifactIds.nonEmpty) return moduleIdArtifactIds
-
-    // we don't actively delete configurations
-    val settingsState = SettingsState.getSettings(project)
-    if (!settingsState.sbtModules.isEmpty) return settingsState.sbtModules.asScala.toMap
-
-    moduleIdArtifactIds = SbtShellOutputAnalysisTask.sbtModuleNamesTask.executeCommand(project)
-    settingsState.sbtModules = moduleIdArtifactIds.asJava
-    moduleIdArtifactIds
-  end getModuleIdArtifactIds
-
-  private def getOrRefreshData(moduleData: ModuleData): JList[DependencyScopeNode] =
-    // use to link dependencies between modules.
-    // obtain the mapping of module name to file path.
+  private def getOrRefreshData(moduleData: ModuleData): JList[DependencyScopeNode] = {
     if (moduleData.getModuleName == Constants.PROJECT) return Collections.emptyList()
+    val module = findModule(project, moduleData)
+    if (module == null || module.isDisposed) return Collections.emptyList()
+    val revision  = generation.get()
+    val moduleId  = sbtProjectSelector(project, moduleData)
+    val inventory = loadedProjects.filter(_ => moduleIdArtifactIds.nonEmpty).getOrElse {
+      val result = new bitlap.sbt.analyzer.task.LoadedSbtProjectsTask().executeInventory(project)
+      if (revision == generation.get()) loadedProjects = Some(result)
+      result
+    }
+    val accessible = projects
+      .values()
+      .asScala
+      .filter(d =>
+        bitlap.sbt.analyzer.util.SbtProjectReference
+          .fromSelector(sbtProjectSelector(project, d))
+          .exists(inventory.projects.contains)
+      )
+      .toList
+    if (!bitlap.sbt.analyzer.util.SbtProjectReference.fromSelector(moduleId).exists(inventory.projects.contains))
+      throw new IllegalArgumentException(
+        "This linked build is not loaded by the active sbt shell; open it in a separate IDE project to analyze it"
+      )
 
-    val result = configurationNodesMap.computeIfAbsent(
-      moduleData.getLinkedExternalProjectPath,
-      _ =>
-        moduleData.loadDependencies(
-          project,
-          getOrganization(project),
-          projects.values().asScala.map(d => d.getModuleName -> d.getLinkedExternalProjectPath).toMap,
-          getModuleIdArtifactIds(project)
-        )
+    val key    = moduleId
+    val ttl    = SettingsState.getSettings(project).fileCacheTimeout.toLong * 1000
+    val cached = configurationNodesMap.get(key)
+    if (cached != null && ttl > 0 && System.currentTimeMillis() - cached.created < ttl) return cached.nodes
+    // Query imported projects only when their build is actually loaded by this shell.
+    val references = accessible.flatMap(d => SbtProjectReference.fromSelector(sbtProjectSelector(project, d)))
+    val preferred  = accessible.flatMap { data =>
+      SbtProjectReference.fromSelector(sbtProjectSelector(project, data)).filter { ref =>
+        ref.buildUri.getScheme == "file" && scala.util
+          .Try(
+            Path.of(ref.buildUri).toAbsolutePath.normalize() ==
+              Path.of(data.getLinkedExternalProjectPath).toAbsolutePath.normalize()
+          )
+          .getOrElse(false)
+      }
+    }.sortBy(_.selector)
+    val names = new ModuleNameTask().executeForProjects(
+      project,
+      references,
+      inventory.current,
+      preferred,
+      moduleIdArtifactIds
     )
-    Option(result).getOrElse(Collections.emptyList())
-  end getOrRefreshData
+    if (revision == generation.get()) moduleIdArtifactIds = names
+    val nodes = moduleData.loadDependencies(
+      project,
+      getOrganization(moduleId),
+      accessible.map(d => sbtProjectSelector(project, d) -> d.getLinkedExternalProjectPath).toMap,
+      names,
+      hasNotified
+    )
+    if (revision == generation.get() && ttl > 0 && !nodes.isEmpty)
+      configurationNodesMap.put(key, ScopeCache(nodes, System.currentTimeMillis()))
+    nodes
+  }
 
 }
 
-object SbtDependencyAnalyzerContributor
-    extends SettingsState.SettingsChangeListener,
-      SbtReimportProject.ReimportProjectListener:
-  import com.intellij.openapi.observable.properties.AtomicProperty
-
-  override def onConfigurationChanged(project: Project, settingsState: SettingsState): Unit = {
-    SbtReimportProject.ReimportProjectPublisher.onReimportProject(project)
-  }
-
-  override def onReimportProject(project: Project): Unit = {
-    SbtUtils.forceRefreshProject(project)
-  }
-
-  ApplicationManager.getApplication.getMessageBus.connect().subscribe(SettingsState._Topic, this)
-  ApplicationManager.getApplication.getMessageBus.connect().subscribe(SbtReimportProject._Topic, this)
-
-  private final val hasNotified = new AtomicBoolean(false)
+object SbtDependencyAnalyzerContributor:
 
   // ===========================================extensions==============================================================
   extension (projectDependencyNode: ProjectDependencyNode)
@@ -311,7 +374,7 @@ object SbtDependencyAnalyzerContributor
       projects.values.asScala
         .map(_.data)
         .find(_.getLinkedExternalProjectPath == projectDependencyNode.getProjectPath)
-        .orNull
+        .getOrElse(null)
     end getModuleData
 
   end extension
@@ -363,10 +426,11 @@ object SbtDependencyAnalyzerContributor
       project: Project,
       organization: String,
       moduleNamePaths: Map[String, String],
-      moduleIdArtifactIds: Map[String, String]
+      moduleIdArtifactIds: Map[String, String],
+      hasNotified: AtomicBoolean
     ): JList[DependencyScopeNode] =
       val module   = findModule(project, moduleData)
-      val moduleId = moduleData.getId.split(" ")(0)
+      val moduleId = sbtProjectSelector(project, moduleData)
 
       if (DependencyUtils.canIgnoreModule(module)) return Collections.emptyList()
 

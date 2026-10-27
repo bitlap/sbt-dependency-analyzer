@@ -4,6 +4,7 @@ import bitlap.sbt.analyzer.task.SbtShellOutputAnalysisTask
 
 import org.scalatest.flatspec.AnyFlatSpec
 
+/** Checks compatibility parsing of sbt info lines and module-name headings. */
 class SbtShellTaskRegex extends AnyFlatSpec {
 
   "regex match" should "ok" in {

@@ -29,6 +29,7 @@ import org.jetbrains.annotations.Nls
 import java.awt.Component
 import javax.swing.*
 
+/** Observable scope selector whose popup supports individual and grouped scope selection. */
 internal class SearchScopeSelector(property: ObservableMutableProperty<List<ScopeItem>>) : JPanel() {
 
     init {
@@ -98,7 +99,7 @@ private class SearchScopePopupContent(scopes: List<ScopeItem>) {
             selectionMode = ListSelectionModel.SINGLE_SELECTION
             ListUtil.installAutoSelectOnMouseMove(this)
         }
-        list.whenMousePressed {
+        val toggle = {
             when (val scope = list.selectedValue) {
                 is SearchScopeItem.Group -> scope.property.set(
                     ThreeStateCheckBox.nextState(
@@ -109,6 +110,11 @@ private class SearchScopePopupContent(scopes: List<ScopeItem>) {
                 is SearchScopeItem.Element -> scope.property.set(!scope.property.get())
             }
         }
+        list.whenMousePressed { toggle() }
+        for (key in listOf("SPACE", "ENTER")) list.inputMap.put(KeyStroke.getKeyStroke(key), "analyzer.toggle")
+        list.actionMap.put("analyzer.toggle", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) { toggle() }
+        })
         component = ListWithFilter.wrap(
             list, ScrollPaneFactory.createScrollPane(list), { it.title }, false, false, true
         )
@@ -238,6 +244,7 @@ private class SearchScopeDropDownLink(
     }
 }
 
+/** A scope option with its external project and current selection state. */
 internal class ScopeItem(
     val scope: Scope, val isSelected: Boolean
 ) {

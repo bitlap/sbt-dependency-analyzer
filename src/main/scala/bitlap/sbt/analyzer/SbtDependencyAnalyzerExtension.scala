@@ -8,6 +8,7 @@ import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyze
 import com.intellij.openapi.externalSystem.model.ProjectSystemId
 import com.intellij.openapi.project.Project
 
+/** Registers the analyzer contributor for the sbt external system. */
 final class SbtDependencyAnalyzerExtension extends DependencyAnalyzerExtension:
 
   override def isApplicable(systemId: ProjectSystemId): Boolean =

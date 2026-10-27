@@ -1,0 +1,25 @@
+PASS registered menus 649.48 ms
+PASS settings validation and screenshot 706.79 ms
+PASS project cache invalidation deletes tracked DOT files without an editor 15.89 ms
+PASS analyzer view constructs and disposes its menus and background lifecycle 614.31 ms
+PASS removal targets one exact scope and keeps valid comma syntax 677.78 ms
+PASS exclusion changes only the selected declaration 52.33 ms
+PASS stale edit preview cannot overwrite a newer document 12.69 ms
+PASS PSI coordinates % retain percent characters in literals 164.50 ms
+PASS PSI coordinates %% retain percent characters in literals 11.78 ms
+PASS PSI coordinates %%% retain percent characters in literals 11.20 ms
+PASS PSI resolves separate group artifact version and configuration vals 207.63 ms
+PASS PSI modifier arguments do not leak into coordinates 14.32 ms
+PASS PSI traverses typed sequences concatenation and result blocks 36.30 ms
+PASS PSI scoped libraryDependencies inherit the configuration 10.88 ms
+PASS PSI alias removal edits the use rather than shared ModuleID definition 23.05 ms
+PASS PSI shared dependency sequences remain navigable and cannot be accidentally edited 17.66 ms
+PASS PSI cyclic references terminate and computed expressions are not guessed 28.27 ms
+PASS PSI exclusion preserves configuration and chained modifiers 18.13 ms
+PASS PSI removal skips comments to remove the correct comma 13.81 ms
+PASS PSI direct removal in settings removes its separator 37.74 ms
+PASS PSI legacy in scope and custom configurations are resolved 42.77 ms
+PASS PSI project matching uses explicit ID and ignores names paths comments and dependency strings 12.25 ms
+PASS PSI project scoped settings resolve project aliases and ThisBuild separately 19.88 ms
+PASS PSI platform settings include shared and only the selected platform 33.48 ms
+PASS PSI aggregate project arguments do not leak settings into the selected project 11.15 ms

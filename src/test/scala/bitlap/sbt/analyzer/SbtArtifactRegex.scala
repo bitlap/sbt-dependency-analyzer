@@ -4,6 +4,7 @@ import bitlap.sbt.analyzer.util.DependencyUtils
 
 import org.scalatest.flatspec.AnyFlatSpec
 
+/** Checks recognition of supported cross-version artifact suffixes. */
 class SbtArtifactRegex extends AnyFlatSpec {
 
   "regex match" should "ok" in {

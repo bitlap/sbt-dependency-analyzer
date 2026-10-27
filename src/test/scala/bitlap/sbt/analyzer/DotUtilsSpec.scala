@@ -12,6 +12,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import guru.nidi.graphviz.model.*
 
+/** Checks graph loading against the bundled DOT fixtures. */
 class DotUtilsSpec extends AnyFlatSpec {
 
   "parse file as MutableNode" should "ok" in {

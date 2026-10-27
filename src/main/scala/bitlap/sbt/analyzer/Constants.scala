@@ -2,6 +2,7 @@ package bitlap.sbt.analyzer
 
 import scala.concurrent.duration.*
 
+/** Shared task timeouts, cache defaults, coordinate separators and bundled release-note markers. */
 object Constants:
 
   final val SEPARATOR: String      = "/"

@@ -10,11 +10,15 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.observable.util.whenDisposed
 
+/** Owns one analyzer virtual file per external system in an IDE project. Extension disposal closes the file. */
 @Service(Service.Level.PROJECT)
 class DependencyAnalyzerManager(private val project: Project) {
 
     private val files = HashMap<ProjectSystemId, DependencyAnalyzerVirtualFile>()
 
+    /** Opens the analyzer file on the EDT and returns the view created by the file editor.
+     * Fails if opening the editor did not create a view.
+     */
     fun getOrCreate(systemId: ProjectSystemId): DependencyAnalyzerView {
         val fileEditorManager = FileEditorManager.getInstance(project)
         val file = files.getOrPut(systemId) {

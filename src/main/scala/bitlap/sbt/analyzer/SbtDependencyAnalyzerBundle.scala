@@ -52,6 +52,7 @@ final class SbtDependencyAnalyzerBundle(private val pathToBundle: String) extend
 
 end SbtDependencyAnalyzerBundle
 
+/** Resolves localized analyzer messages from the plugin resource bundle. */
 object SbtDependencyAnalyzerBundle:
   private val LOG = Logger.getInstance(classOf[SbtDependencyAnalyzerBundle])
 

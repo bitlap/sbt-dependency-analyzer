@@ -39,29 +39,25 @@ def getUnifiedCoordinates(data: DependencyAnalyzerDependency.Data.Module): Unifi
   UnifiedCoordinates(moduleData.getGroup, moduleData.getExternalName, moduleData.getVersion)
 }
 
+/** Walks toward the nearest module ancestor and returns its direct dependency child with the imported IDE module.
+ *  Returns null if no usable module ancestor exists.
+ */
 def getParentModule(
   project: Project,
   dependency: DependencyAnalyzerDependency
 ): (DependencyAnalyzerDependency, Module) = {
-  val parentData = dependency.getParent
-  if (parentData == null) return getRootModule(project, dependency, dependency)
-  dependency.getParent.getData match
-    case _: Data.Module =>
-      val data = dependency.getParent.getData.asInstanceOf[DependencyAnalyzerDependency.Data.Module]
-      dependency -> getModule(project, data)
-    case _ => getRootModule(project, dependency, dependency)
-}
-
-def getRootModule(
-  project: Project,
-  dependency: DependencyAnalyzerDependency,
-  parent: DependencyAnalyzerDependency
-): (DependencyAnalyzerDependency, Module) = {
-  parent.getData match
-    case _: Data.Module =>
-      val data = parent.getData.asInstanceOf[DependencyAnalyzerDependency.Data.Module]
-      dependency -> getModule(project, data)
-    case _ => getRootModule(project, parent, parent.getParent)
+  if (dependency == null) return null
+  var direct = dependency
+  var parent = dependency.getParent
+  while (parent != null) {
+    parent.getData match {
+      case data: Data.Module =>
+        val module = getModule(project, data)
+        return if (module == null) null else direct -> module
+      case _ => direct = parent; parent = parent.getParent
+    }
+  }
+  null
 }
 
 def getModule(project: Project, data: DependencyAnalyzerDependency.Data.Module): Module = {
@@ -75,9 +71,22 @@ def findDependsModules(module: Module): List[Module] = {
   modelsProvider.getAllDependentModules(module).asScala.toList
 }
 
+/** Uses the imported external ID and path before the platform name generator, so renamed and qualified IDE display
+ *  names do not determine module identity. Ambiguous imported identities never select an arbitrary module.
+ */
 def findModule(project: Project, moduleData: ModuleData): Module = {
-  val modelsProvider = new IdeModelsProviderImpl(project)
-  modelsProvider.findIdeModule(moduleData)
+  val imported = com.intellij.openapi.module.ModuleManager.getInstance(project).getModules.toList.filter { module =>
+    val properties = com.intellij.openapi.externalSystem.ExternalSystemModulePropertyManager.getInstance(module)
+    !module.isDisposed && properties.getExternalSystemId == moduleData.getOwner.getId &&
+      properties.getLinkedProjectId == moduleData.getId &&
+      com.intellij.openapi.util.io.FileUtil
+        .pathsEqual(properties.getLinkedProjectPath, moduleData.getLinkedExternalProjectPath)
+  }
+  imported match {
+    case List(module) => module
+    case Nil          => new IdeModelsProviderImpl(project).findIdeModule(moduleData)
+    case _            => null
+  }
 }
 
 def findModule(project: Project, projectData: ProjectData): Module =
@@ -89,10 +98,25 @@ def findModule(project: Project, projectPath: String): Module = {
   findModule(project, moduleNode.getData)
 }
 
+/** Returns the imported build-qualified sbt selector, without inferring identity from display or directory names.
+ *  Throws if the module has no imported sbt identity.
+ */
+def sbtProjectSelector(project: Project, data: ModuleData): String = {
+  val module = findModule(project, data)
+  Option(module)
+    .flatMap(org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId)
+    .map(ref => bitlap.sbt.analyzer.util.SbtProjectReference(ref.uri, ref.id).selector)
+    .getOrElse(throw new IllegalArgumentException(s"No imported sbt project identity for ${data.getModuleName}"))
+}
+
+/** Pauses a polling worker after checking cancellation; interruption restores the thread flag and cancels the
+ *  operation.
+ */
 def waitInterval(sleep: Duration = Constants.INTERVAL_TIMEOUT): Unit = {
-  try {
-    Thread.sleep(sleep.toMillis)
-  } catch {
-    case _: Throwable =>
+  com.intellij.openapi.progress.ProgressManager.checkCanceled()
+  try Thread.sleep(sleep.toMillis)
+  catch {
+    case e: InterruptedException =>
+      Thread.currentThread().interrupt(); throw new com.intellij.openapi.progress.ProcessCanceledException(e)
   }
 }

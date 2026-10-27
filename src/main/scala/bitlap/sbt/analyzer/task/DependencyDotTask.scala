@@ -7,11 +7,13 @@ import bitlap.sbt.analyzer.model.*
 import bitlap.sbt.analyzer.parsing.*
 import bitlap.sbt.analyzer.util.DependencyUtils.*
 
+import org.jetbrains.plugins.scala.project.*
+
 import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.model.project.dependencies.DependencyScopeNode
 import com.intellij.openapi.project.Project
 
-/** Handles the `sbt dependencyDot` command. Upon completion, parses the resulting file content via a callback. */
+/** Generates or reuses the selected project/scope DOT file, then builds analyzer nodes with imported identity maps. */
 final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
 
   override val dependencyGraphType: DependencyGraphType = DependencyGraphType.Dot
@@ -25,7 +27,7 @@ final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
     ideaModuleIdSbtModules: Map[String, String]
   ): DependencyScopeNode =
     val module   = findModule(project, moduleData)
-    val moduleId = moduleData.getId.split(" ")(0)
+    val moduleId = sbtProjectSelector(project, moduleData)
 
     taskCompleteCallback(project, moduleData, scope) { file =>
       val sbtModuleNameMap =
@@ -40,7 +42,24 @@ final class DependencyDotTask extends SbtShellDependencyAnalysisTask:
             scope,
             organization,
             moduleNamePaths,
-            sbtModuleNameMap
+            sbtModuleNameMap,
+            cacheTimeoutMillis = SettingsState.getSettings(project).fileCacheTimeout.toLong * 1000,
+            dotCache = AnalyzerCacheService.getInstance(project).dotFiles,
+            modulePlatforms = bitlap.sbt.analyzer.util.SbtModuleIdentity.platformsByProject(
+              com.intellij.openapi.module.ModuleManager
+                .getInstance(project)
+                .getModules
+                .toSeq
+                .filterNot(canIgnoreModule)
+                .flatMap(m =>
+                  org.jetbrains.sbt.SbtUtil.getSbtProjectUriAndId(m).map { ref =>
+                    bitlap.sbt.analyzer.util.SbtProjectReference(ref.uri, ref.id).selector -> (if (m.isScalaJs) "js"
+                                                                                               else if (m.isScalaNative)
+                                                                                                 "native"
+                                                                                               else "jvm")
+                  }
+                )
+            )
           ),
           createRootScopeNode(scope, project)
         )

@@ -8,7 +8,6 @@ import java.nio.file.Path
 import scala.concurrent.duration.*
 
 import bitlap.sbt.analyzer.activity.WhatsNew
-import bitlap.sbt.analyzer.activity.WhatsNew.canBrowseInHTMLEditor
 
 import org.jetbrains.plugins.scala.*
 import org.jetbrains.plugins.scala.extensions.*
@@ -24,8 +23,7 @@ import com.intellij.openapi.fileEditor.*
 import com.intellij.openapi.project.{ DumbAwareAction, Project }
 import com.intellij.openapi.vfs.{ VfsUtil, VirtualFile }
 
-/** SbtDependencyAnalyzer global notifier
- */
+/** Creates analyzer notifications and their settings, reimport and release-note actions. */
 object Notifications {
 
   private lazy val NotificationGroup =
@@ -86,12 +84,12 @@ object Notifications {
       .setIcon(SbtDependencyAnalyzerIcons.ICON)
       .addAction(
         new NotificationAction(
-          SbtDependencyAnalyzerBundle.message("analyzer.notification.ok")
+          SbtDependencyAnalyzerBundle.message("analyzer.notification.reload")
         ) {
           override def actionPerformed(e: AnActionEvent, notification: Notification): Unit = {
-            inReadAction {
-              notification.expire()
-            }
+            notification.expire()
+            FileDocumentManager.getInstance().saveAllDocuments()
+            SbtUtils.forceRefreshProject(project)
 
           }
         }
@@ -186,7 +184,8 @@ object Notifications {
 
   }
 
-  /** notify information when update plugin
+  /** Offers a release-note action when automatic opening failed; opening the notification does not acknowledge the
+   *  version.
    */
   def notifyUpdateActivity(project: Project, version: Version, title: String, content: String): Unit = {
     val notification = NotificationGroup
@@ -194,40 +193,20 @@ object Notifications {
       .setTitle(title)
       .setImportant(true)
       .setIcon(SbtDependencyAnalyzerIcons.ICON)
-      .setListenerIfSupport(NotificationListener.URL_OPENING_LISTENER)
-    if (canBrowseInHTMLEditor) {
-      notification.whenExpired(() => WhatsNew.browse(version, project))
-    } else {
-      notification.addAction(
-        new DumbAwareAction(
-          SbtDependencyAnalyzerBundle.message("analyzer.notification.updated.gotoBrowser"),
-          null,
-          AllIcons.General.Web
-        ) {
-          override def actionPerformed(e: AnActionEvent): Unit =
-            notification.expire()
-            BrowserUtil.browse(WhatsNew.getReleaseNotes(version))
+
+    notification.addAction(
+      new DumbAwareAction(
+        SbtDependencyAnalyzerBundle.message("analyzer.notification.updated.gotoBrowser"),
+        null,
+        AllIcons.General.Web
+      ) {
+        override def actionPerformed(e: AnActionEvent): Unit = {
+          notification.expire()
+          WhatsNew.browse(version, project)
         }
-      )
-    }
-    notification.notify(project)
-    if (canBrowseInHTMLEditor && SbtUtils.untilProjectReady(project)) {
-      waitInterval(10.seconds)
-      notification.expire()
-    }
-  }
-
-  extension (notification: Notification) {
-
-    private def setListenerIfSupport(listener: NotificationListener): Notification = {
-      try {
-        org.joor.Reflect.on(notification).call("setListener", listener)
-      } catch {
-        case _: Throwable =>
-        // ignore
       }
-      notification
-    }
+    )
+    notification.notify(project)
   }
 
   extension (file: VirtualFile) {

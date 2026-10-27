@@ -1,49 +1,44 @@
 package bitlap.sbt.analyzer.parsing
 
-import java.util.concurrent.{ ConcurrentHashMap, ConcurrentMap }
-
 import scala.jdk.CollectionConverters.*
 
-import bitlap.sbt.analyzer.Constants
 import bitlap.sbt.analyzer.util.SbtDependencyUtils
 
 import com.intellij.buildsystem.model.DeclaredDependency
-import com.intellij.openapi.module.Module as OpenapiModule
+import com.intellij.openapi.module.Module
+import com.intellij.openapi.project.DumbService
+import com.intellij.openapi.roots.ProjectRootModificationTracker
+import com.intellij.psi.util.PsiModificationTracker
 
-object DependencyDeclarationCache {
+/** Caches successful declarations per module until PSI, module roots or indexing state changes. Empty lookups during
+ *  import are retried instead of permanently disabling source actions. Callers must hold read access for resolution.
+ */
+final class DependencyDeclarationCache {
+  private case class Stamp(psi: Long, roots: Long, indexing: Long)
+  private case class Entry(stamp: Stamp, dependencies: List[DeclaredDependency])
 
-  private val cache: ConcurrentMap[String, List[DeclaredDependency]] =
-    new ConcurrentHashMap[String, List[DeclaredDependency]]()
+  private def stamp(module: Module): Stamp = {
+    val project = module.getProject
+    Stamp(
+      PsiModificationTracker.getInstance(project).getModificationCount,
+      ProjectRootModificationTracker.getInstance(project).getModificationCount,
+      DumbService.getInstance(project).getModificationTracker.getModificationCount
+    )
+  }
+  private val entries = scala.collection.mutable.Map.empty[Module, Entry]
 
-  private case class CacheEntry(
-    dependencies: List[DeclaredDependency],
-    timestamp: Long
-  )
-
-  private val cacheWithTTL: ConcurrentMap[String, CacheEntry] = new ConcurrentHashMap[String, CacheEntry]()
-
-  def getDeclaredDependencyWithCache(module: OpenapiModule): List[DeclaredDependency] = {
-    val moduleKey = module.getName + "@" + module.getModuleFilePath
-
-    Option(cacheWithTTL.get(moduleKey)) match {
-      case Some(entry) if System.currentTimeMillis() - entry.timestamp < Constants.DECLARED_CACHE_TIMEOUT =>
-        entry.dependencies
-      case _ =>
+  def getDeclaredDependencyWithCache(module: Module): List[DeclaredDependency] = synchronized {
+    if (module == null || module.isDisposed || DumbService.isDumb(module.getProject)) return Nil
+    val current = stamp(module)
+    entries.get(module) match {
+      case Some(entry) if entry.stamp == current => entry.dependencies
+      case _                                     =>
         val dependencies = SbtDependencyUtils.declaredDependencies(module).asScala.toList
-        if (dependencies.nonEmpty) {
-          cacheWithTTL.put(moduleKey, CacheEntry(dependencies, System.currentTimeMillis()))
-        }
-
+        if (dependencies.nonEmpty && stamp(module) == current) entries.put(module, Entry(current, dependencies))
+        else entries.remove(module)
         dependencies
     }
   }
-
-  def invalidateCache(module: OpenapiModule): Unit = {
-    val moduleKey = module.getName + "@" + module.getModuleFilePath
-    cacheWithTTL.remove(moduleKey)
-  }
-
-  def clearAllCache(): Unit = {
-    cacheWithTTL.clear()
-  }
+  def invalidateCache(module: Module): Unit = synchronized { entries.remove(module); () }
+  def clearAllCache(): Unit                 = synchronized { entries.clear() }
 }

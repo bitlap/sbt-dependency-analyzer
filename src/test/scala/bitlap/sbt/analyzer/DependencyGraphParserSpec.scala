@@ -7,6 +7,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import com.intellij.openapi.externalSystem.model.project.dependencies.*
 
+/** Checks parsed dependency relations against the expected fixture graph. */
 class DependencyGraphParserSpec extends AnyFlatSpec {
 
   "parse dot file" should "convert to object successfully " in {

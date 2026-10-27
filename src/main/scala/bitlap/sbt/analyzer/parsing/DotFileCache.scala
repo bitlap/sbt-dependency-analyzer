@@ -1,47 +1,78 @@
 package bitlap.sbt.analyzer.parsing
 
-import java.util.concurrent.ConcurrentHashMap
+import java.nio.file.{ Files, Path }
+import java.nio.file.attribute.BasicFileAttributes
+import java.util.concurrent.TimeUnit
+
+import scala.collection.mutable
+import scala.util.Try
 
 import bitlap.sbt.analyzer.Constants
 import bitlap.sbt.analyzer.model.Dependencies
 
-object DotFileCache {
+/** Synchronized, bounded cache of successful DOT parses. Lookups validate TTL and file metadata; revision tokens
+ *  prevent an in-flight parse from restoring invalidated data. Fingerprints use modification time, size and file key,
+ *  not a content hash.
+ */
+class DotFileCache(maxEntries: Int = 128) {
+  private case class Entry(value: Dependencies, fingerprint: String, created: Long)
+  private var revision = 0L
+  private val entries  = mutable.LinkedHashMap.empty[String, Entry]
 
-  private case class CacheEntry(
-    dependencies: Option[Dependencies],
-    timestamp: Long,
-    fileSize: Long
-  )
+  private def fingerprint(path: String): Option[String] = Try {
+    val a = Files.readAttributes(Path.of(path), classOf[BasicFileAttributes])
+    s"${a.lastModifiedTime.to(TimeUnit.NANOSECONDS)}:${a.size}:${a.fileKey}"
+  }.toOption
 
-  private val cache: ConcurrentHashMap[String, CacheEntry] = new ConcurrentHashMap[String, CacheEntry]()
-
-  def getCachedResult(filePath: String, currentTime: Long): Option[Option[Dependencies]] = {
-    Option(cache.get(filePath)) match {
-      case Some(entry) if currentTime - entry.timestamp < Constants.CACHE_TIMEOUT =>
-        Some(entry.dependencies)
-      case _ => None
+  /** Returns Some(Some(graph)) only for a fresh entry with unchanged file metadata; otherwise returns None. The nested
+   *  Option is retained for compatibility; failed parses are not cached.
+   */
+  def getCachedResult(
+    path: String,
+    now: Long,
+    ttlMillis: Long = Constants.CACHE_TIMEOUT
+  ): Option[Option[Dependencies]] = synchronized {
+    entries.get(path) match {
+      case Some(e) if ttlMillis > 0 && now - e.created < ttlMillis && fingerprint(path).contains(e.fingerprint) =>
+        Some(Some(e.value))
+      case _ => entries.remove(path); None
     }
   }
 
-  def cacheResult(filePath: String, result: Option[Dependencies], fileSize: Long, currentTime: Long): Unit = {
-    cache.put(filePath, CacheEntry(result, currentTime, fileSize))
+  /** Stores a successful parse when file metadata is available. The fileSize argument is retained for compatibility;
+   *  the fingerprint is read from the file itself.
+   */
+  def cacheResult(path: String, result: Option[Dependencies], fileSize: Long, now: Long): Unit = synchronized {
+    for (value <- result; stamp <- fingerprint(path)) {
+      entries.remove(path)
+      entries.put(path, Entry(value, stamp, now))
+      while (entries.size > maxEntries) entries.remove(entries.head._1)
+    }
   }
 
-  def invalidateCache(filePath: String): Unit = {
-    cache.remove(filePath)
-  }
+  /** Captures the cache revision and current file metadata before parsing. */
+  def snapshot(path: String): (Long, Option[String]) = synchronized { revision -> fingerprint(path) }
 
-  def clearAllCache(): Unit = {
-    cache.clear()
-  }
-
-  def cleanupExpired(currentTime: Long): Unit = {
-    val iterator = cache.entrySet().iterator()
-    while (iterator.hasNext) {
-      val entry = iterator.next()
-      if (currentTime - entry.getValue.timestamp >= Constants.CACHE_TIMEOUT) {
-        iterator.remove()
+  /** Stores a parse only if neither invalidation nor a detectable file change occurred since the snapshot. */
+  def cacheIfUnchanged(path: String, value: Dependencies, token: (Long, Option[String]), now: Long): Unit =
+    synchronized {
+      if (snapshot(path) == token) token._2.foreach { stamp =>
+        entries.remove(path)
+        entries.put(path, Entry(value, stamp, now))
+        while (entries.size > maxEntries) entries.remove(entries.head._1)
       }
     }
+
+  /** Invalidates this path and advances the revision so earlier parse snapshots cannot be committed. */
+  def invalidateCache(path: String): Unit = synchronized { revision += 1; entries.remove(path); () }
+  def clearAllCache(): Unit               = synchronized { revision += 1; entries.clear() }
+
+  /** Removes entries older than the default cache timeout; per-lookup TTL is enforced separately. */
+  def cleanupExpired(now: Long): Unit = synchronized {
+    entries.filterInPlace((_, e) => now - e.created < Constants.CACHE_TIMEOUT)
   }
+  private[analyzer] def size: Int = synchronized { entries.size }
 }
+
+/** Standalone parser tests have no IntelliJ project. Production uses AnalyzerCacheService.dotFiles. */
+object DotFileCache extends DotFileCache(128)

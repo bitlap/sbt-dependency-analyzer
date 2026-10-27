@@ -10,6 +10,7 @@ import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyze
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.module.Module
 
+/** Opens the project analyzer editor and delegates transfer of the current action selection. */
 abstract class BaseDependencyAnalyzerAction : DependencyAnalyzerAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -21,6 +22,7 @@ abstract class BaseDependencyAnalyzerAction : DependencyAnalyzerAction() {
     }
 }
 
+/** Maps an external selection to an IDE module and optional dependency/scope before selecting it in the analyzer. */
 abstract class AbstractSbtDependencyAnalyzerAction<Data> : BaseDependencyAnalyzerAction() {
 
     abstract fun getSelectedData(e: AnActionEvent): Data?

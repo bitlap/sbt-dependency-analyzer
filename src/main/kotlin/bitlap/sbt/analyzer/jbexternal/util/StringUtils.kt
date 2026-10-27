@@ -1,16 +1,18 @@
 package bitlap.sbt.analyzer.jbexternal.util
 
-/**
- * Copy from commons-lang3
+/** Abbreviates text using an ellipsis within maxWidth.
+ * Adapted from Apache Commons Lang; widths smaller than the required marker space throw IllegalArgumentException.
  */
 fun abbreviate(str: String, maxWidth: Int): String {
     return abbreviate(str, "...", 0, maxWidth)
 }
 
+/** Abbreviates text with a caller-supplied marker and no offset. */
 fun abbreviate(str: String, abbrevMarker: String, maxWidth: Int): String {
     return abbreviate(str, abbrevMarker, 0, maxWidth)
 }
 
+/** Returns true if any supplied sequence has zero length; no arguments returns false. */
 fun isAnyEmpty(vararg css: CharSequence): Boolean {
     if (css.isEmpty()) {
         return false
@@ -27,6 +29,10 @@ fun isAnyEmpty(vararg css: CharSequence): Boolean {
     }
 }
 
+/** Abbreviates around the requested offset while accounting for marker width.
+ * Invalid marker widths throw IllegalArgumentException. With an empty marker, a positive maxWidth is used
+ * directly as the substring bound and must not exceed the input length.
+ */
 fun abbreviate(str: String, abbrevMarker: String, stringOffset: Int, maxWidth: Int): String {
     var offset = stringOffset
     return if (str.isNotEmpty() && "" == abbrevMarker && maxWidth > 0) {

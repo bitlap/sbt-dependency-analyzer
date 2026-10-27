@@ -6,6 +6,9 @@ import bitlap.sbt.analyzer.util.SbtReimportProject
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 
+/** Refreshes the selected sbt project with temporary resolver settings and publishes an analyzer refresh event. Without
+ *  an imported selection, update uses the active shell current project.
+ */
 final class SbtRefreshSnapshotDependenciesAction extends BaseRefreshDependenciesAction:
 
   override lazy val eventText: String =
@@ -15,8 +18,24 @@ final class SbtRefreshSnapshotDependenciesAction extends BaseRefreshDependencies
     SbtDependencyAnalyzerBundle.message("analyzer.refresh.snapshot.dependencies.description")
 
   override def actionPerformed(e: AnActionEvent): Unit = {
-    SbtShellOutputAnalysisTask.refreshSnapshotsTask.executeCommand(e.getProject)
-    SbtReimportProject.ReimportProjectPublisher.onReimportProject(e.getProject)
+    val project = e.getProject
+    if (project == null) return
+    var selected =
+      e.getData(com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView.Companion.getDEPENDENCY)
+    while (selected != null && selected.getParent != null) selected = selected.getParent
+    val moduleId = Option(selected)
+      .flatMap(d =>
+        d.getData match {
+          case module: com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency.Data.Module =>
+            Option(module.getUserData(Module_Data)).map(sbtProjectSelector(project, _))
+          case _ => None
+        }
+      )
+      .getOrElse("")
+    SbtTaskRunner.getInstance(project).run(eventText) {
+      new RefreshSnapshotsTask().executeForModule(project, moduleId)
+      SbtReimportProject.ReimportProjectPublisher.onReimportProject(project)
+    }
   }
 
 end SbtRefreshSnapshotDependenciesAction
