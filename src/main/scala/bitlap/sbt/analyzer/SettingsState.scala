@@ -12,11 +12,11 @@ import com.intellij.openapi.project.Project
 import com.intellij.util.messages.Topic
 import com.intellij.util.xmlb.XmlSerializerUtil
 
+/** Persistent project settings for enabled scopes, the optional organization override and cache lifetime. Cache
+ *  lifetime is stored in seconds; zero disables reuse. Negative persisted values are clamped on load.
+ */
 @State(name = "SbtDependencyAnalyzer.Settings", storages = Array(new Storage("bitlap.sbt.dependency.analyzer.xml")))
 final class SettingsState extends PersistentStateComponent[SettingsState] {
-
-  @BeanProperty
-  var sbtModules: JMap[String, String] = Collections.emptyMap()
 
   @BeanProperty
   var disableAnalyzeCompile: Boolean = false
@@ -27,9 +27,11 @@ final class SettingsState extends PersistentStateComponent[SettingsState] {
   @BeanProperty
   var disableAnalyzeTest: Boolean = false
 
+  /** Optional manual organization override; an empty value queries the selected sbt project. */
   @BeanProperty
   var organization: String = ""
 
+  /** Cache lifetime in seconds; zero disables parsed-file and scope-model reuse. */
   @BeanProperty
   var fileCacheTimeout: Int = 3600
 
@@ -37,6 +39,7 @@ final class SettingsState extends PersistentStateComponent[SettingsState] {
 
   override def loadState(state: SettingsState): Unit = {
     XmlSerializerUtil.copyBean(state, this)
+    fileCacheTimeout = math.max(0, fileCacheTimeout)
   }
 
 }
@@ -54,15 +57,7 @@ object SettingsState {
 
   end SettingsChangeListener
 
-  /** *
-   *  {{{
-   *     ApplicationManager
-   *    .getApplication()
-   *    .messageBus
-   *    .connect(this)
-   *    .subscribe(SettingsChangeListener.TOPIC, this)
-   *  }}}
-   */
+  /** Publishes settings changes synchronously; listeners filter events by project. */
   val SettingsChangePublisher: SettingsChangeListener =
     ApplicationManager.getApplication.getMessageBus.syncPublisher(_Topic)
 

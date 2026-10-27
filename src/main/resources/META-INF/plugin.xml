@@ -3,12 +3,12 @@
     <id>org.bitlap.sbtDependencyAnalyzer</id>
     <name>Sbt Dependency Analyzer</name>
     <!--  will be added by sbt plugin build  -->
-    <version>0.9.0-RC1</version>
+    <version>0.11.0</version>
     <vendor url="https://github.com/bitlap/sbt-dependency-analyzer" email="dreamylost@outlook.com">Bitlap
     </vendor>
     <!-- please see https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html for description -->
     <!-- old version support, see branch idea231.x   -->
-    <idea-version since-build="261.0"/>
+    <idea-version since-build="261.0" until-build="261.*"/>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lang</depends>
@@ -26,12 +26,18 @@
                      defaultValue="true" restartRequired="false"
                      description="Analyzer for Dependency Tree"/>
 
+        <fileEditorProvider implementation="bitlap.sbt.analyzer.activity.WhatsNewEditorProvider"/>
         <postStartupActivity implementation="bitlap.sbt.analyzer.activity.PluginUpdateActivity"/>
         <projectService serviceImplementation="bitlap.sbt.analyzer.SettingsState"/>
         <projectConfigurable groupId="tools"
                              displayName="Sbt Dependency Analyzer"
                              instance="bitlap.sbt.analyzer.SbtDependencyAnalyzerConfigurable"/>
     </extensions>
+
+    <applicationListeners>
+        <listener class="bitlap.sbt.analyzer.activity.PluginInstallListener"
+                  topic="com.intellij.ide.plugins.DynamicPluginListener"/>
+    </applicationListeners>
 
     <actions>
         <action id="Sbt.ViewDependencyAnalyzer" class="bitlap.sbt.analyzer.action.ViewDependencyAnalyzerAction"/>
@@ -139,10 +145,23 @@
     <change-notes>
         <![CDATA[
             <h1>0.11.0</h1>
+            <h2>Dependency analysis</h2>
             <ul>
-                <li>Support IDEA 262.x .</li>
-                <li>Improve code .</li>
-            </ul>                
+                <li>Faster graph loading, responsive filtering and background JAR size calculation.</li>
+                <li>More accurate JVM, Scala.js and Native module matching, including external builds.</li>
+                <li>Reuse aggregated module names and query only missing projects.</li>
+            </ul>
+            <h2>Dependency actions</h2>
+            <ul>
+                <li>Improved navigation and editing for multi-module builds, custom project factories and conditional declarations.</li>
+                <li>Review changes in a native diff preview, with highlighting and Undo/Redo support.</li>
+                <li>Remove or exclude libraries by coordinates; project module dependencies remain read-only.</li>
+            </ul>
+            <h2>Updates and reliability</h2>
+            <ul>
+                <li>Release notes open in your browser, with an offline page when launching the browser fails.</li>
+                <li>Safer sbt shell startup, cancellation and refresh without losing existing session settings.</li>
+            </ul>
             <h1>0.10.0</h1>
             <ul>
                 <li>Support IDEA 261.x .</li>

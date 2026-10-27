@@ -31,6 +31,7 @@ import javax.swing.tree.TreeModel
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency as Dependency
 
 
+/** Formats module or artifact display text, optionally including the artifact group ID. */
 internal fun Dependency.Data.getDisplayText(showGroupId: Boolean): @NlsSafe String = when (this) {
     is Dependency.Data.Module -> name
     is Dependency.Data.Artifact -> when (showGroupId) {
@@ -40,7 +41,7 @@ internal fun Dependency.Data.getDisplayText(showGroupId: Boolean): @NlsSafe Stri
 }
 
 private fun SimpleColoredComponent.customizeCellRenderer(
-    group: DependencyGroup, showGroupId: Boolean, showSize: Boolean
+    group: DependencyGroup, showGroupId: Boolean, showSize: Boolean, onSizeReady: () -> Unit
 ) {
     icon = when {
         group.hasWarnings -> AllIcons.General.Warning
@@ -58,16 +59,17 @@ private fun SimpleColoredComponent.customizeCellRenderer(
     if (showSize) {
         when (group.data) {
             is SbtDAArtifact -> {
+                (group.data as SbtDAArtifact).loadSize(onSizeReady)
                 val selfSize = (group.data as SbtDAArtifact).size.formatAsFileSize
                 val total = (group.data as SbtDAArtifact).totalSize.formatAsFileSize
                 if (selfSize == total) {
                     // no child nodes
-                    if ((group.data as SbtDAArtifact).size.toInt() != 0) {
+                    if ((group.data as SbtDAArtifact).size != 0L) {
                         append(
                             " - ($selfSize)", GRAYED_ATTRIBUTES
                         )
                     }
-                } else if ((group.data as SbtDAArtifact).size.toInt() == 0) {
+                } else if ((group.data as SbtDAArtifact).size == 0L) {
                     // may have been evicted away by conflicts
                     append(
                         " - $total", GRAYED_ATTRIBUTES
@@ -108,6 +110,7 @@ private fun htmlParagraph(text: @Nls String): @NlsSafe String {
     return "<p>\n$text\n</p>"
 }
 
+/** Publishes action data for the selected list group, preserving a bound dependency only if it belongs to that group. */
 internal abstract class AbstractDependencyList(
     model: ListModel<DependencyGroup>
 ) : JBList<DependencyGroup>(model), UiDataProvider {
@@ -120,8 +123,10 @@ internal abstract class AbstractDependencyList(
     }
 
     override fun uiDataSnapshot(sink: DataSink) {
-        sink[DependencyAnalyzerView.DEPENDENCY] = dependencyProperty.get()
-        sink[DependencyAnalyzerView.DEPENDENCIES] = dependencyGroupProperty.get()?.variances
+        val group = selectedValue
+        sink[DependencyAnalyzerView.DEPENDENCY] =
+            dependencyProperty.get()?.takeIf { it in (group?.variances ?: emptyList()) } ?: group?.dependency
+        sink[DependencyAnalyzerView.DEPENDENCIES] = group?.variances
     }
 
     init {
@@ -132,6 +137,7 @@ internal abstract class AbstractDependencyList(
     }
 }
 
+/** Publishes selected tree-row data and selects the clicked row before a context menu captures its data context. */
 internal abstract class AbstractDependencyTree(
     model: TreeModel
 ) : SimpleTree(model), UiDataProvider {
@@ -144,19 +150,33 @@ internal abstract class AbstractDependencyTree(
     }
 
     override fun uiDataSnapshot(sink: DataSink) {
-        sink[DependencyAnalyzerView.DEPENDENCY] = dependencyProperty.get()
-        sink[DependencyAnalyzerView.DEPENDENCIES] = dependencyGroupProperty.get()?.variances
+        val group = (lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? DependencyGroup
+        sink[DependencyAnalyzerView.DEPENDENCY] =
+            dependencyProperty.get()?.takeIf { it in (group?.variances ?: emptyList()) } ?: group?.dependency
+        sink[DependencyAnalyzerView.DEPENDENCIES] = group?.variances
     }
 
     init {
+        // Select before PopupHandler captures its data context on either Windows/Linux press or macOS release.
+        addMouseListener(object : java.awt.event.MouseAdapter() {
+            private fun selectRow(event: java.awt.event.MouseEvent) {
+                if (event.isPopupTrigger || javax.swing.SwingUtilities.isRightMouseButton(event)) {
+                    val path = getPathForLocation(event.x, event.y)
+                    if (path == null) clearSelection() else selectionPath = path
+                }
+            }
+            override fun mousePressed(event: java.awt.event.MouseEvent) = selectRow(event)
+            override fun mouseReleased(event: java.awt.event.MouseEvent) = selectRow(event)
+        })
         bind(dependencyGroupProperty)
         dependencyGroupProperty.bind(dependencyProperty.transform({ dependency ->
-            model.asSequence().map { it.userObject as DependencyGroup }
+            model.asSequence().mapNotNull { it.userObject as? DependencyGroup }
                 .find { it.data == dependency?.data && dependency.parent in it.parents }
         }, { it?.dependency }))
     }
 }
 
+/** Dependency list with row-aware context menus and optional asynchronously loaded size labels. */
 internal open class DependencyList(
     model: ListModel<DependencyGroup>,
     showGroupIdProperty: ObservableProperty<Boolean>,
@@ -171,6 +191,7 @@ internal open class DependencyList(
     }
 }
 
+/** Dependency tree with the analyzer action group and shared artifact rendering. */
 internal open class DependencyTree(
     model: TreeModel,
     showGroupIdProperty: ObservableProperty<Boolean>,
@@ -184,6 +205,7 @@ internal open class DependencyTree(
     }
 }
 
+/** Usage paths with warning rendering and automatic expansion after model changes. */
 internal open class UsagesTree(
     model: TreeModel,
     showGroupIdProperty: ObservableProperty<Boolean>,
@@ -196,7 +218,7 @@ internal open class UsagesTree(
         setCellRenderer(UsagesTreeRenderer(showGroupIdProperty, showSizeProperty))
         whenTreeChanged {
             invokeLater {
-                TreeUtil.expandAll(this)
+                TreeUtil.expand(this, 2)
             }
         }
     }
@@ -210,7 +232,7 @@ private class DependencyListRenderer(
         list: JList<out DependencyGroup>, value: DependencyGroup?, index: Int, selected: Boolean, hasFocus: Boolean
     ) {
         val group = value ?: return
-        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get())
+        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get()) { list.repaint() }
     }
 }
 
@@ -223,7 +245,7 @@ private class DependencyTreeRenderer(
     ) {
         val node = value as? DefaultMutableTreeNode ?: return
         val group = node.userObject as? DependencyGroup ?: return
-        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get())
+        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get()) { tree.repaint() }
     }
 }
 
@@ -236,7 +258,7 @@ private class UsagesTreeRenderer(
     ) {
         val node = value as? DefaultMutableTreeNode ?: return
         val group = node.userObject as? DependencyGroup ?: return
-        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get())
+        customizeCellRenderer(group, showGroupIdProperty.get(), showSizeProperty.get()) { tree.repaint() }
         val warning = group.warnings.firstOrNull()
         if (warning != null) {
             append(" ${warning.message}", SimpleTextAttributes.ERROR_ATTRIBUTES)
@@ -244,6 +266,9 @@ private class UsagesTreeRenderer(
     }
 }
 
+/** Non-empty group of dependency occurrences sharing display identity.
+ * Uses a non-omitted occurrence as its representative when possible and aggregates scopes, parents and warnings.
+ */
 internal class DependencyGroup(val variances: List<Dependency>) {
     val dependency by lazy { variances.find { !it.isOmitted } ?: variances.first() }
     val data by lazy { dependency.data }

@@ -1,30 +1,23 @@
-package bitlap.sbt.analyzer.parsing;
+package bitlap.sbt.analyzer.parsing
 
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable
 
+/** Integer-indexed adjacency lists with iterative, cycle-tolerant reachability traversal. */
 final class DependencyGraph(size: Int) {
+  private val graph                 = Array.fill(size)(mutable.ListBuffer.empty[Int])
+  def addEdge(v: Int, w: Int): Unit = { graph(v) += w }
 
-  private val graph = Array.fill(size)(ListBuffer[Int]())
-
-  def addEdge(v: Int, w: Int): Unit = {
-    graph(v) += w
-  }
-
-  def dfs(v: Int): ListBuffer[Int] = {
-    val visited = Array.fill(size + 1)(false)
-    val res     = ListBuffer[Int]()
-    walk(v, visited, res)
-    res
-  }
-
-  private def walk(v: Int, visited: Array[Boolean], res: ListBuffer[Int]): Unit = {
-    visited(v) = true
-
-    res += v
-
-    graph(v).foreach(n => {
-      if (!visited(n))
-        walk(n, visited, res)
-    })
+  /** Returns reachable vertex IDs, including the start vertex, in depth-first adjacency order. Each vertex is visited
+   *  once even when the graph contains cycles.
+   */
+  def dfs(v: Int): mutable.ListBuffer[Int] = {
+    val seen   = mutable.HashSet.empty[Int]
+    val result = mutable.ListBuffer.empty[Int]
+    val stack  = mutable.ArrayDeque(v)
+    while (stack.nonEmpty) {
+      val current = stack.removeLast()
+      if (seen.add(current)) { result += current; graph(current).reverseIterator.foreach(stack.append) }
+    }
+    result
   }
 }

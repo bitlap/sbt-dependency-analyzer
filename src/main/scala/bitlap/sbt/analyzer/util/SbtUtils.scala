@@ -31,6 +31,7 @@ import com.intellij.openapi.project.*
 import com.intellij.openapi.roots.OrderRootType
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar
 
+/** Bridges IDE library storage, linked sbt settings, import readiness and shell working-directory discovery. */
 object SbtUtils {
 
   val least  = SbtVersion("1.4.0")
@@ -38,23 +39,52 @@ object SbtUtils {
 
   private val LOG = Logger.getInstance(getClass)
 
-  /** sbt: com.softwaremill.sttp.shared:zio_3:1.3.7:jar
+  /** Returns the sum of distinct class-root file sizes for an imported sbt JAR coordinate, cached per project. The
+   *  input is group:artifact:version without the sbt prefix or :jar suffix. Missing libraries return zero.
    */
   def getLibrarySize(project: Project, artifact: String): Long = {
-    val libraryTable = LibraryTablesRegistrar.getInstance.getLibraryTable(project)
-    val library      = libraryTable.getLibraryByName(s"sbt: $artifact:jar")
-    if (library == null) return 0
-    val vf = library.getFiles(OrderRootType.CLASSES)
-    if (vf != null) {
-      vf.headOption.map(_.getLength).getOrElse(0)
-    } else 0
+    if (project.isDisposed) return 0L
+    bitlap.sbt.analyzer.parsing.AnalyzerCacheService
+      .getInstance(project)
+      .librarySizes
+      .computeIfAbsent(
+        artifact,
+        _ => {
+          val libraryTable = LibraryTablesRegistrar.getInstance.getLibraryTable(project)
+          val library      = libraryTable.getLibraryByName(s"sbt: $artifact:jar")
+          if (library == null) 0L
+          else {
+            val files = library.getFiles(OrderRootType.CLASSES)
+            files.toList
+              .map(f =>
+                Option(com.intellij.openapi.vfs.JarFileSystem.getInstance().getVirtualFileForJar(f)).getOrElse(f)
+              )
+              .filterNot(_.isDirectory)
+              .distinct
+              .map(_.getLength)
+              .sum
+          }
+        }
+      )
+      .longValue()
   }
 
+  /** Sums unique non-evicted artifact sizes reachable from the supplied roots, including the roots themselves. Uses an
+   *  iterative traversal and checks cancellation while visiting nodes.
+   */
   def getLibraryTotalSize(project: Project, ds: List[DependencyNode]): Long = {
-    if (ds.isEmpty) return 0L
-    ds.map(d =>
-      getLibrarySize(project, d.getDisplayName) + getLibraryTotalSize(project, d.getDependencies.asScala.toList)
-    ).sum
+    val seen    = scala.collection.mutable.HashSet.empty[String]
+    val pending = scala.collection.mutable.ArrayDeque.from(ds)
+    var total   = 0L
+    while (pending.nonEmpty) {
+      com.intellij.openapi.progress.ProgressManager.checkCanceled()
+      val node = pending.removeLast()
+      if (node.getSelectionReason != "Evicted By" && seen.add(node.getDisplayName)) {
+        total += getLibrarySize(project, node.getDisplayName)
+        pending.appendAll(node.getDependencies.asScala)
+      }
+    }
+    total
   }
 
   def getSbtProject(project: Project): SbtSettings = SSbtUtil.sbtSettings(project)
@@ -68,23 +98,25 @@ object SbtUtils {
     )
   }
 
+  /** Waits up to ten minutes for linked sbt resolve/task-list refresh operations to finish. Returns false on timeout or
+   *  disposal; checks cancellation between polls. This does not wait for PSI indexing.
+   */
   def untilProjectReady(project: Project): Boolean = {
     val timeout   = 10.minutes
     val interval  = 100.millis
     val startTime = System.currentTimeMillis()
     val endTime   = startTime + timeout.toMillis
-    while (System.currentTimeMillis() < endTime && !SbtUtils.isProjectReady(project)) {
+    while (!project.isDisposed && System.currentTimeMillis() < endTime && !SbtUtils.isProjectReady(project)) {
       waitInterval(interval)
     }
-    true
+    !project.isDisposed && isProjectReady(project)
   }
 
-  // TODO
+  /** Checks for linked sbt resolve and task-list refresh operations; an empty linked-project list is ready. */
   private def isProjectReady(project: Project): Boolean = {
     SbtUtils
       .getExternalProjectPath(project)
       .map { externalProjectPath =>
-        // index is ready?
         val processingManager = ApplicationManager.getApplication.getService(classOf[ExternalSystemProcessingManager])
         if (
           processingManager
@@ -115,18 +147,17 @@ object SbtUtils {
   }
 
   // see https://github.com/JetBrains/intellij-scala/blob/idea232.x/sbt/sbt-impl/src/org/jetbrains/sbt/shell/SbtProcessManager.scala
+  /** Uses the first imported external root as the shell working directory, falling back to the guessed IDE directory.
+   *  When independent sbt builds are linked, this does not identify which build the active shell has loaded.
+   */
   def getWorkingDirPath(project: Project): String = {
-    // Fist try to calculate root path based on `getExternalRootProjectPath`
-    // When sbt project reference another sbt project via `RootProject` this will correctly find the root project path (see SCL-21143)
-    // However, if user manually linked multiple SBT projects via external system tool window (sbt tool window)
-    // using "Link sbt Project" button (the one with "plus" icon), it  will randomly choose one of the projects
+    // This mirrors the Scala plugin shell working-directory policy; selection is not build-specific.
     val externalRootProjectPath: Option[String] = {
       val modules = ModuleManager.getInstance(project).getModules.toSeq
       modules.iterator.map(ExternalSystemApiUtil.getExternalRootProjectPath).find(_ != null)
     }
     externalRootProjectPath.orElse {
-      // Not sure when externalRootProjectPath can be empty in SBT projects
-      // But just in case fallback to ProjectUtil.guessProjectDir, but notice that it's not reliable in some cases (see SCL-21143)
+      // Preserve a fallback for projects without imported external-root metadata (see SCL-21143).
       val message =
         s"Can't calculate external root project path for project `${project.getName}`, fallback to `ProjectUtil.guessProjectDir`"
       if (ApplicationManager.getApplication.isInternal)

@@ -17,6 +17,7 @@ import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.externalSystem.view.*
 import com.intellij.openapi.module.Module
 
+/** Opens the analyzer from an sbt tool-window node and transfers its module, dependency and scope selection. */
 final class ViewDependencyAnalyzerAction extends AbstractSbtDependencyAnalyzerAction[ExternalSystemNode[?]]:
 
   getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.name"))
@@ -32,21 +33,21 @@ final class ViewDependencyAnalyzerAction extends AbstractSbtDependencyAnalyzerAc
     val project = anActionEvent.getProject
     if (project == null) return null
     val node = selectedData.findNode(classOf[ModuleNode])
-    if (node == null) return null
-    val data = node.getData
-    if (data != null) return findModule(project, data)
+    if (node != null && node.getData != null) return findModule(project, node.getData)
 
     val projectNode = selectedData.findNode(classOf[ProjectNode])
     if (projectNode == null) return null
     val projectData = projectNode.getData
-    if (projectNode == null) return null
+    if (projectData == null) return null
     findModule(project, projectData)
   end getModule
 
   override def getSelectedData(anActionEvent: AnActionEvent): ExternalSystemNode[?] =
+    val system = anActionEvent.getData(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID)
+    if (system != null && system != SbtProjectSystem.Id) return null
     val module = anActionEvent.getData(ExternalSystemDataKeys.SELECTED_NODES)
     if (module == null) return null
-    module.asScala.headOption.orNull
+    module.asScala.headOption.getOrElse(null)
   end getSelectedData
 
   override def getSystemId(anActionEvent: AnActionEvent): ProjectSystemId = SbtProjectSystem.Id
@@ -62,16 +63,22 @@ final class ViewDependencyAnalyzerAction extends AbstractSbtDependencyAnalyzerAc
         Option(selectedData.getDependencyNode) match
           case Some(pdn: ProjectDependencyNode)  => DAModule(pdn.getProjectName)
           case Some(adn: ArtifactDependencyNode) =>
-            val size  = SbtUtils.getLibrarySize(selectedData.getProject, adn.getDisplayName)
-            val total =
-              SbtUtils.getLibraryTotalSize(selectedData.getProject, adn.getDependencies.asScala.toList)
-            SbtDAArtifact(adn.getGroup, adn.getModule, adn.getVersion, size, size + total)
+            val size = SbtUtils.getLibrarySize(selectedData.getProject, adn.getDisplayName)
+            SbtDAArtifact(
+              selectedData.getProject,
+              adn.getGroup,
+              adn.getModule,
+              adn.getVersion,
+              () => size,
+              () => SbtUtils.getLibraryTotalSize(selectedData.getProject, List(adn))
+            )
           case _ => throw new IllegalArgumentException(s"Cannot get dependency data from ${selectedData.getClass}")
 
   end getDependencyData
 
 end ViewDependencyAnalyzerAction
 
+/** Opens the analyzer for the sbt module selected in the project view. */
 final class ProjectViewDependencyAnalyzerAction extends AbstractSbtDependencyAnalyzerAction[Module]:
 
   getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.name"))
@@ -103,6 +110,7 @@ final class ProjectViewDependencyAnalyzerAction extends AbstractSbtDependencyAna
 
 end ProjectViewDependencyAnalyzerAction
 
+/** Opens the analyzer from the toolbar when the project has linked sbt builds. */
 final class ToolbarDependencyAnalyzerAction extends BaseDependencyAnalyzerAction():
 
   getTemplatePresentation.setText(SbtDependencyAnalyzerBundle.message("analyzer.action.name"))
@@ -112,7 +120,9 @@ final class ToolbarDependencyAnalyzerAction extends BaseDependencyAnalyzerAction
 
   override def getSystemId(anActionEvent: AnActionEvent): ProjectSystemId = SbtProjectSystem.Id
 
-  override def isEnabledAndVisible(anActionEvent: AnActionEvent): Boolean = true
+  override def isEnabledAndVisible(anActionEvent: AnActionEvent): Boolean =
+    anActionEvent.getProject != null && SbtUtils.getExternalProjectPath(anActionEvent.getProject).nonEmpty &&
+    Option(anActionEvent.getData(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID)).forall(_ == SbtProjectSystem.Id)
 
   override def setSelectedState(dependencyAnalyzerView: DependencyAnalyzerView, anActionEvent: AnActionEvent): Unit =
     viewAction.setSelectedState(dependencyAnalyzerView, anActionEvent)

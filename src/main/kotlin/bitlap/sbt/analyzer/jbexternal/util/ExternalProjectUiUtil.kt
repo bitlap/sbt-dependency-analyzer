@@ -23,6 +23,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.Component
 import javax.swing.*
 
+/** Observable project selector with natural sorting and a searchable popup of imported projects. */
 internal class ExternalProjectSelector(
     property: ObservableMutableProperty<DependencyAnalyzerProject?>,
     externalProjects: List<DependencyAnalyzerProject>,
@@ -73,9 +74,12 @@ private class ExternalProjectPopupContent(
     }
 
     fun afterChange(listener: (DependencyAnalyzerProject) -> Unit) {
-        list.whenMousePressed {
-            listener(list.selectedValue)
-        }
+        val submit = { list.selectedValue?.let(listener); Unit }
+        list.whenMousePressed { submit() }
+        list.inputMap.put(javax.swing.KeyStroke.getKeyStroke("ENTER"), "analyzer.select")
+        list.actionMap.put("analyzer.select", object : javax.swing.AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) = submit()
+        })
     }
 }
 
@@ -131,7 +135,16 @@ private class ExternalProjectDropDownLink(
             val content = ExternalProjectPopupContent(externalProjects, projectIcon)
             content.afterChange(onChange)
             return JBPopupFactory.getInstance().createComponentPopupBuilder(content.component, null).setResizable(true)
-                .setRequestFocus(true).createPopup().apply { content.list.whenMousePressed(listener = ::closeOk) }
+                .setRequestFocus(true).createPopup().apply {
+                    content.list.whenMousePressed(listener = ::closeOk)
+                    content.list.inputMap.put(javax.swing.KeyStroke.getKeyStroke("ENTER"), "analyzer.confirm")
+                    content.list.actionMap.put("analyzer.confirm", object : javax.swing.AbstractAction() {
+                        override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                            content.list.selectedValue?.let(onChange)
+                            cancel()
+                        }
+                    })
+                }
         }
     }
 }

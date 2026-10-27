@@ -8,6 +8,7 @@ import org.jetbrains.plugins.scala.project.Version
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAwareAction
 
+/** Manually opens release notes for the installed plugin version, including during indexing. */
 final class WhatsNewAction extends DumbAwareAction {
 
   getTemplatePresentation.setText(

@@ -2,12 +2,20 @@ package bitlap.sbt.analyzer.task
 
 import com.intellij.openapi.project.Project
 
-/** Handles the `sbt organization` command to retrieve the current project's organization, which typically serves as the
- *  groupId for artifacts in dependency management.
+/** Queries sbt organization, the group component used to recognize project coordinates in generated graphs.
+ *  Project-scoped queries reject missing values; the unscoped compatibility entry point may return null.
  */
 final class OrganizationTask extends SbtShellOutputAnalysisTask[String]:
 
   import SbtShellOutputAnalysisTask.*
+
+  /** Queries organization for the supplied project selector and rejects an absent or empty result. */
+  def executeForModule(project: Project, moduleId: String): String = {
+    val lines = getCommandOutputLines(project, s"$moduleId / organization")
+    lines.lastOption.collect { case SHELL_OUTPUT_RESULT_REGEX(_, _, value) => value.trim }
+      .filter(_.nonEmpty)
+      .getOrElse(throw new IllegalStateException(s"No organization returned for $moduleId"))
+  }
 
   override def executeCommand(project: Project): String =
     val outputLines = getCommandOutputLines(project, "organization")

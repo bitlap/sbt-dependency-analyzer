@@ -1,0 +1,370 @@
+[IJ] projects
+[info] In file:/module-name-fixture/circe/
+[info] 	   benchmark
+[info] 	   coreJS
+[info] 	   coreJVM
+[info] 	   coreNative
+[info] 	   docs
+[info] 	   extrasJS
+[info] 	   extrasJVM
+[info] 	   extrasNative
+[info] 	   genericJS
+[info] 	   genericJVM
+[info] 	   genericNative
+[info] 	   genericSimpleJS
+[info] 	   genericSimpleJVM
+[info] 	   genericSimpleNative
+[info] 	   hygieneJS
+[info] 	   hygieneJVM
+[info] 	   hygieneNative
+[info] 	   jawnJS
+[info] 	   jawnJVM
+[info] 	   jawnNative
+[info] 	   literalJS
+[info] 	   literalJVM
+[info] 	   literalNative
+[info] 	   numbersJS
+[info] 	   numbersJVM
+[info] 	   numbersNative
+[info] 	   numbersTestingJS
+[info] 	   numbersTestingJVM
+[info] 	   numbersTestingNative
+[info] 	   parserJS
+[info] 	   parserJVM
+[info] 	   parserNative
+[info] 	   pointerJS
+[info] 	   pointerJVM
+[info] 	   pointerLiteralJS
+[info] 	   pointerLiteralJVM
+[info] 	   pointerLiteralNative
+[info] 	   pointerNative
+[info] 	 * root
+[info] 	   rootJS
+[info] 	   rootJVM
+[info] 	   rootNative
+[info] 	   scalafixInternalInput
+[info] 	   scalafixInternalOutput
+[info] 	   scalafixInternalRules
+[info] 	   scalafixInternalTests
+[info] 	   scalajs
+[info] 	   scalajsJavaTimeTest
+[info] 	   scodecJS
+[info] 	   scodecJVM
+[info] 	   scodecNative
+[info] 	   shapesJS
+[info] 	   shapesJVM
+[info] 	   shapesNative
+[info] 	   testingJS
+[info] 	   testingJVM
+[info] 	   testingNative
+[info] 	   testsJS
+[info] 	   testsJVM
+[info] 	   testsNative
+[IJ] {file:///module-name-fixture/circe/}root / moduleName
+[info] hygieneJS / moduleName
+[info] 	circe-hygiene
+[info] scalafixInternalInput / moduleName
+[info] 	circe-scalafix-internal-input
+[info] pointerJS / moduleName
+[info] 	circe-pointer
+[info] testingJVM / moduleName
+[info] 	circe-testing
+[info] numbersTestingJVM / moduleName
+[info] 	circe-numbers-testing
+[info] shapesJVM / moduleName
+[info] 	circe-shapes
+[info] scodecNative / moduleName
+[info] 	circe-scodec
+[info] pointerLiteralJVM / moduleName
+[info] 	circe-pointer-literal
+[info] parserNative / moduleName
+[info] 	circe-parser
+[info] testsJS / moduleName
+[info] 	circe-tests
+[info] shapesJS / moduleName
+[info] 	circe-shapes
+[info] extrasNative / moduleName
+[info] 	circe-extras
+[info] extrasJS / moduleName
+[info] 	circe-extras
+[info] jawnNative / moduleName
+[info] 	circe-jawn
+[info] pointerLiteralNative / moduleName
+[info] 	circe-pointer-literal
+[info] literalNative / moduleName
+[info] 	circe-literal
+[info] literalJS / moduleName
+[info] 	circe-literal
+[info] scalajs / moduleName
+[info] 	circe-scalajs
+[info] pointerLiteralJS / moduleName
+[info] 	circe-pointer-literal
+[info] jawnJS / moduleName
+[info] 	circe-jawn
+[info] parserJVM / moduleName
+[info] 	circe-parser
+[info] genericJS / moduleName
+[info] 	circe-generic
+[info] coreNative / moduleName
+[info] 	circe-core
+[info] numbersNative / moduleName
+[info] 	circe-numbers
+[info] parserJS / moduleName
+[info] 	circe-parser
+[info] genericJVM / moduleName
+[info] 	circe-generic
+[info] extrasJVM / moduleName
+[info] 	circe-extras
+[info] pointerJVM / moduleName
+[info] 	circe-pointer
+[info] scalajsJavaTimeTest / moduleName
+[info] 	circe-scalajs-java-time-test
+[info] numbersTestingJS / moduleName
+[info] 	circe-numbers-testing
+[info] testingNative / moduleName
+[info] 	circe-testing
+[info] numbersJVM / moduleName
+[info] 	circe-numbers
+[info] jawnJVM / moduleName
+[info] 	circe-jawn
+[info] testingJS / moduleName
+[info] 	circe-testing
+[info] scodecJVM / moduleName
+[info] 	circe-scodec
+[info] benchmark / moduleName
+[info] 	circe-benchmark
+[info] coreJS / moduleName
+[info] 	circe-core
+[info] pointerNative / moduleName
+[info] 	circe-pointer
+[info] numbersTestingNative / moduleName
+[info] 	circe-numbers-testing
+[info] genericNative / moduleName
+[info] 	circe-generic
+[info] hygieneJVM / moduleName
+[info] 	circe-hygiene
+[info] coreJVM / moduleName
+[info] 	circe-core
+[info] scalafixInternalTests / moduleName
+[info] 	circe-scalafix-internal-tests
+[info] literalJVM / moduleName
+[info] 	circe-literal
+[info] shapesNative / moduleName
+[info] 	circe-shapes
+[info] testsNative / moduleName
+[info] 	circe-tests
+[info] scodecJS / moduleName
+[info] 	circe-scodec
+[info] numbersJS / moduleName
+[info] 	circe-numbers
+[info] scalafixInternalRules / moduleName
+[info] 	circe-scalafix-internal-rules
+[info] testsJVM / moduleName
+[info] 	circe-tests
+[info] hygieneNative / moduleName
+[info] 	circe-hygiene
+[info] scalafixInternalOutput / moduleName
+[info] 	circe-scalafix-internal-output
+[info] moduleName
+[info] 	root
+[IJ] {file:///module-name-fixture/circe/}hygieneJS / moduleName
+[info] circe-hygiene
+[IJ] {file:///module-name-fixture/circe/}scodecJS / moduleName
+[info] circe-scodec
+[IJ] {file:///module-name-fixture/circe/}testsNative / moduleName
+[info] circe-tests
+[IJ] {file:///module-name-fixture/circe/}coreNative / moduleName
+[info] circe-core
+[IJ] {file:///module-name-fixture/circe/}genericJS / moduleName
+[info] circe-generic
+[IJ] {file:///module-name-fixture/circe/}hygieneNative / moduleName
+[info] circe-hygiene
+[IJ] {file:///module-name-fixture/circe/}jawnNative / moduleName
+[info] circe-jawn
+[IJ] {file:///module-name-fixture/circe/}numbersJVM / moduleName
+[info] circe-numbers
+[IJ] {file:///module-name-fixture/circe/}parserNative / moduleName
+[info] circe-parser
+[IJ] {file:///module-name-fixture/circe/}extrasJS / moduleName
+[info] circe-extras
+[IJ] {file:///module-name-fixture/circe/}pointerJVM / moduleName
+[info] circe-pointer
+[IJ] {file:///module-name-fixture/circe/}genericJVM / moduleName
+[info] circe-generic
+[IJ] {file:///module-name-fixture/circe/}scalafixInternalTests / moduleName
+[info] circe-scalafix-internal-tests
+[IJ] {file:///module-name-fixture/circe/}coreJS / moduleName
+[info] circe-core
+[IJ] {file:///module-name-fixture/circe/}coreJVM / moduleName
+[info] circe-core
+[IJ] {file:///module-name-fixture/circe/}testingNative / moduleName
+[info] circe-testing
+[IJ] {file:///module-name-fixture/circe/}jawnJS / moduleName
+[info] circe-jawn
+[IJ] {file:///module-name-fixture/circe/}parserJS / moduleName
+[info] circe-parser
+[IJ] {file:///module-name-fixture/circe/}numbersTestingJVM / moduleName
+[info] circe-numbers-testing
+[IJ] {file:///module-name-fixture/circe/}numbersJS / moduleName
+[info] circe-numbers
+[IJ] {file:///module-name-fixture/circe/}rootJVM / moduleName
+[info] scalafixInternalInput / moduleName
+[info] 	circe-scalafix-internal-input
+[info] testingJVM / moduleName
+[info] 	circe-testing
+[info] numbersTestingJVM / moduleName
+[info] 	circe-numbers-testing
+[info] shapesJVM / moduleName
+[info] 	circe-shapes
+[info] pointerLiteralJVM / moduleName
+[info] 	circe-pointer-literal
+[info] parserJVM / moduleName
+[info] 	circe-parser
+[info] genericJVM / moduleName
+[info] 	circe-generic
+[info] extrasJVM / moduleName
+[info] 	circe-extras
+[info] pointerJVM / moduleName
+[info] 	circe-pointer
+[info] numbersJVM / moduleName
+[info] 	circe-numbers
+[info] jawnJVM / moduleName
+[info] 	circe-jawn
+[info] scodecJVM / moduleName
+[info] 	circe-scodec
+[info] benchmark / moduleName
+[info] 	circe-benchmark
+[info] hygieneJVM / moduleName
+[info] 	circe-hygiene
+[info] coreJVM / moduleName
+[info] 	circe-core
+[info] scalafixInternalTests / moduleName
+[info] 	circe-scalafix-internal-tests
+[info] literalJVM / moduleName
+[info] 	circe-literal
+[info] scalafixInternalRules / moduleName
+[info] 	circe-scalafix-internal-rules
+[info] testsJVM / moduleName
+[info] 	circe-tests
+[info] scalafixInternalOutput / moduleName
+[info] 	circe-scalafix-internal-output
+[info] rootJVM / moduleName
+[info] 	rootjvm
+[IJ] {file:///module-name-fixture/circe/}shapesJVM / moduleName
+[info] circe-shapes
+[IJ] {file:///module-name-fixture/circe/}scalajsJavaTimeTest / moduleName
+[info] circe-scalajs-java-time-test
+[IJ] {file:///module-name-fixture/circe/}numbersNative / moduleName
+[info] circe-numbers
+[IJ] {file:///module-name-fixture/circe/}genericSimpleJVM / moduleName
+[info] circe-generic-simple
+[IJ] {file:///module-name-fixture/circe/}jawnJVM / moduleName
+[info] circe-jawn
+[IJ] {file:///module-name-fixture/circe/}extrasJVM / moduleName
+[info] circe-extras
+[IJ] {file:///module-name-fixture/circe/}hygieneJVM / moduleName
+[info] circe-hygiene
+[IJ] {file:///module-name-fixture/circe/}rootJS / moduleName
+[info] hygieneJS / moduleName
+[info] 	circe-hygiene
+[info] pointerJS / moduleName
+[info] 	circe-pointer
+[info] testsJS / moduleName
+[info] 	circe-tests
+[info] shapesJS / moduleName
+[info] 	circe-shapes
+[info] extrasJS / moduleName
+[info] 	circe-extras
+[info] literalJS / moduleName
+[info] 	circe-literal
+[info] scalajs / moduleName
+[info] 	circe-scalajs
+[info] pointerLiteralJS / moduleName
+[info] 	circe-pointer-literal
+[info] jawnJS / moduleName
+[info] 	circe-jawn
+[info] genericJS / moduleName
+[info] 	circe-generic
+[info] parserJS / moduleName
+[info] 	circe-parser
+[info] scalajsJavaTimeTest / moduleName
+[info] 	circe-scalajs-java-time-test
+[info] numbersTestingJS / moduleName
+[info] 	circe-numbers-testing
+[info] testingJS / moduleName
+[info] 	circe-testing
+[info] coreJS / moduleName
+[info] 	circe-core
+[info] scodecJS / moduleName
+[info] 	circe-scodec
+[info] numbersJS / moduleName
+[info] 	circe-numbers
+[info] rootJS / moduleName
+[info] 	rootjs
+[IJ] {file:///module-name-fixture/circe/}scalafixInternalOutput / moduleName
+[info] circe-scalafix-internal-output
+[IJ] {file:///module-name-fixture/circe/}scalafixInternalInput / moduleName
+[info] circe-scalafix-internal-input
+[IJ] {file:///module-name-fixture/circe/}scodecNative / moduleName
+[info] circe-scodec
+[IJ] {file:///module-name-fixture/circe/}pointerLiteralJVM / moduleName
+[info] circe-pointer-literal
+[IJ] {file:///module-name-fixture/circe/}genericNative / moduleName
+[info] circe-generic
+[IJ] {file:///module-name-fixture/circe/}literalJVM / moduleName
+[info] circe-literal
+[IJ] {file:///module-name-fixture/circe/}testingJS / moduleName
+[info] circe-testing
+[IJ] {file:///module-name-fixture/circe/}scalafixInternalRules / moduleName
+[info] circe-scalafix-internal-rules
+[IJ] {file:///module-name-fixture/circe/}scodecJVM / moduleName
+[info] circe-scodec
+[IJ] {file:///module-name-fixture/circe/}testsJS / moduleName
+[info] circe-tests
+[IJ] {file:///module-name-fixture/circe/}docs / moduleName
+[info] circe-docs
+[IJ] {file:///module-name-fixture/circe/}testsJVM / moduleName
+[info] circe-tests
+[IJ] {file:///module-name-fixture/circe/}benchmark / moduleName
+[info] circe-benchmark
+[IJ] {file:///module-name-fixture/circe/}parserJVM / moduleName
+[info] circe-parser
+[IJ] {file:///module-name-fixture/circe/}extrasNative / moduleName
+[info] circe-extras
+[IJ] {file:///module-name-fixture/circe/}testingJVM / moduleName
+[info] circe-testing
+[IJ] {file:///module-name-fixture/circe/}rootNative / moduleName
+[info] scodecNative / moduleName
+[info] 	circe-scodec
+[info] parserNative / moduleName
+[info] 	circe-parser
+[info] extrasNative / moduleName
+[info] 	circe-extras
+[info] jawnNative / moduleName
+[info] 	circe-jawn
+[info] pointerLiteralNative / moduleName
+[info] 	circe-pointer-literal
+[info] literalNative / moduleName
+[info] 	circe-literal
+[info] coreNative / moduleName
+[info] 	circe-core
+[info] numbersNative / moduleName
+[info] 	circe-numbers
+[info] testingNative / moduleName
+[info] 	circe-testing
+[info] pointerNative / moduleName
+[info] 	circe-pointer
+[info] numbersTestingNative / moduleName
+[info] 	circe-numbers-testing
+[info] genericNative / moduleName
+[info] 	circe-generic
+[info] shapesNative / moduleName
+[info] 	circe-shapes
+[info] testsNative / moduleName
+[info] 	circe-tests
+[info] hygieneNative / moduleName
+[info] 	circe-hygiene
+[info] rootNative / moduleName
+[info] 	rootnative
+[IJ] {file:///module-name-fixture/circe/}scalajs / moduleName
+[info] circe-scalajs

@@ -1,70 +1,92 @@
 package bitlap.sbt.analyzer.action
 
 import bitlap.sbt.analyzer.*
-import bitlap.sbt.analyzer.util.*
-import bitlap.sbt.analyzer.util.packagesearch.*
+import bitlap.sbt.analyzer.parsing.{ AnalyzerCacheService, DependencyDeclaration }
+import bitlap.sbt.analyzer.util.{ Notifications, SbtReimportProject }
+import bitlap.sbt.analyzer.util.packagesearch.DependencyEditPlan
 
-import com.intellij.buildsystem.model.unified.{ UnifiedCoordinates, UnifiedDependency }
 import com.intellij.openapi.actionSystem.*
-import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.{ ControlFlowException, Logger }
+import com.intellij.openapi.ui.Messages
 
-final class SbtDependencyAnalyzerExcludeAction extends BaseRefreshDependenciesAction:
+/** Previews removal of a direct dependency or exclusion of a transitive artifact from its direct declaration. Shared
+ *  definitions are not edited automatically; document changes invalidate a prepared preview.
+ */
+final class SbtDependencyAnalyzerExcludeAction extends BaseRefreshDependenciesAction {
+  override lazy val eventText        = SbtDependencyAnalyzerBundle.message("analyzer.action.excludeAction.text")
+  override lazy val eventDescription = SbtDependencyAnalyzerBundle.message("analyzer.action.excludeAction.description")
 
-  override lazy val eventText: String = SbtDependencyAnalyzerBundle.message("analyzer.action.excludeAction.text")
-
-  override lazy val eventDescription: String =
-    SbtDependencyAnalyzerBundle.message("analyzer.action.excludeAction.description")
-  private val LOG = Logger.getInstance(classOf[SbtDependencyAnalyzerExcludeAction])
-
-  override def actionPerformed(e: AnActionEvent): Unit = {
-    Option(SbtDependencyAnalyzerActionUtil.getModifiableDependency(e)).foreach { modifiableDependency =>
-      val parent = getUnifiedCoordinates(modifiableDependency.parentDependency)
-      if (modifiableDependency.parentDependency.getParent != null) {
-        val unifiedDependency =
-          new UnifiedDependency(parent, modifiableDependency.parentDependency.getParent.getScope.getTitle)
-        val coordinates: UnifiedCoordinates = modifiableDependency.coordinates
-        if (coordinates == parent) {
-          try {
-            // remove declared dependency
-            SbtDependencyModifier.removeDependency(modifiableDependency.module, unifiedDependency)
-            Notifications.notifyDependencyChanged(
-              modifiableDependency.module.getProject,
-              coordinates.getDisplayName,
-              self = true
-            )
-          } catch {
-            case e: Exception =>
-              LOG.error(s"Cannot remove declared dependency: ${coordinates.getDisplayName}", e)
-              Notifications.notifyDependencyChanged(
-                modifiableDependency.module.getProject,
-                coordinates.getDisplayName,
-                self = true,
-                success = false
-              )
-          }
-
-        } else {
-          // add exclude coordinates
-          val ret =
-            SbtDependencyModifier.addExcludeToDependency(modifiableDependency.module, unifiedDependency, coordinates)
-          if (ret) {
-            Notifications.notifyDependencyChanged(
-              modifiableDependency.module.getProject,
-              coordinates.getDisplayName,
-              success = true,
-              self = false
-            )
-          } else {
-            Notifications.notifyDependencyChanged(
-              modifiableDependency.module.getProject,
-              coordinates.getDisplayName,
-              success = false,
-              self = false
-            )
-          }
-        }
+  override def update(e: AnActionEvent): Unit = {
+    super.update(e)
+    val applicable = SbtDependencyAnalyzerActionUtil.isSbtDependency(e)
+    e.getPresentation.setVisible(applicable)
+    if (!applicable) {
+      e.getPresentation.setEnabled(false)
+      return
+    }
+    if (
+      !SbtDependencyAnalyzerActionUtil.isEditableArtifact(
+        e.getData(
+          com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView.Companion.getDEPENDENCY
+        )
+      )
+    ) {
+      e.getPresentation.setEnabled(false)
+      e.getPresentation.setDescription(SbtDependencyAnalyzerBundle.message("analyzer.action.edit.libraryOnly"))
+      return
+    }
+    if (com.intellij.openapi.project.DumbService.isDumb(e.getProject)) {
+      e.getPresentation.setEnabled(false)
+      e.getPresentation.setDescription(SbtDependencyAnalyzerBundle.message("analyzer.action.source.indexing"))
+      return
+    }
+    if (e.getPresentation.isEnabled) {
+      val target = Option(SbtDependencyAnalyzerActionUtil.getEditableDependency(e))
+      e.getPresentation.setEnabled(
+        target.exists(
+          _.candidateDeclaredDependencies.exists(d =>
+            Option(d.getDataContext.getData(DependencyDeclaration.Key)).exists(_.editable)
+          )
+        )
+      )
+      if (!e.getPresentation.isEnabled)
+        e.getPresentation.setDescription(SbtDependencyAnalyzerBundle.message("analyzer.action.source.unavailable"))
+      target.foreach { t =>
+        val remove = getUnifiedCoordinates(t.parentDependency) == t.coordinates
+        e.getPresentation.setText(
+          SbtDependencyAnalyzerBundle.message(
+            if (remove) "analyzer.action.remove.text" else "analyzer.action.exclude.from.text",
+            getUnifiedCoordinates(t.parentDependency).getDisplayName
+          )
+        )
       }
     }
   }
 
-end SbtDependencyAnalyzerExcludeAction
+  override def actionPerformed(e: AnActionEvent): Unit = {
+    val target = SbtDependencyAnalyzerActionUtil.getEditableDependency(e)
+    if (target == null) return
+    val project    = target.module.getProject
+    val candidates =
+      target.candidateDeclaredDependencies.flatMap(d =>
+        Option(d.getDataContext.getData(DependencyDeclaration.Key)).filter(_.editable)
+      )
+    val declaration = DeclarationChooser.choose(project, eventText, candidates)
+    if (declaration.isEmpty) return
+    val remove = getUnifiedCoordinates(target.parentDependency) == target.coordinates
+    try {
+      val plan = DependencyEditPlan.prepare(project, declaration.get, target.coordinates, remove)
+      if (DependencyEditPlan.preview(plan, e.getPresentation.getText)) {
+        plan.apply()
+        AnalyzerCacheService.getInstance(project).declarations.invalidateCache(target.module)
+        Notifications.notifyDependencyChanged(project, target.coordinates.getDisplayName, self = remove)
+
+      }
+    } catch {
+      case c: ControlFlowException => throw c
+      case error: Exception        =>
+        Logger.getInstance(getClass).warn("Cannot modify dependency", error)
+        Messages.showErrorDialog(project, error.getMessage, eventText)
+    }
+  }
+}

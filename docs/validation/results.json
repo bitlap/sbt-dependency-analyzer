@@ -1,0 +1,213 @@
+{
+  "recordedAt": "2026-10-26T15:29:39.165836+08:00",
+  "platform": "macOS-26.5.2-x86_64-i386-64bit",
+  "buildJdk": "21.0.2",
+  "ideBuild": "261.25134.95",
+  "ideRuntime": "JetBrains Runtime 25.0.3",
+  "scalaPlugin": "2026.1.20",
+  "tests": {
+    "total": 44,
+    "failed": 0,
+    "durationSeconds": 1.096,
+    "note": "43 functional/packaging cases plus one opt-in benchmark entry; normal tests do not execute the benchmark loop"
+  },
+  "verifier": "Compatible. 16 usages of deprecated API. 27 usages of experimental API. 16 usages of internal API",
+  "benchmarkNotes": [
+    "Synthetic DOT cold parse and dependency-tree construction; excludes sbt shell, fixture generation, compilation and SDK startup.",
+    "Two runs. Normal cases: one warmup then five samples. Slow legacy 10000-node case: one cold sample and no warmup.",
+    "Frozen old expansion implementation and Graphviz parser versus new direct-edge index and linear sbt DOT reader."
+  ],
+  "benchmarkResults": [
+    {
+      "legacy": true,
+      "shape": "chain",
+      "nodes": 100,
+      "samples": 5,
+      "medianMs": 31.292,
+      "minMs": 28.05,
+      "maxMs": 62.12
+    },
+    {
+      "legacy": false,
+      "shape": "chain",
+      "nodes": 100,
+      "samples": 5,
+      "medianMs": 2.973,
+      "minMs": 2.722,
+      "maxMs": 3.836
+    },
+    {
+      "legacy": true,
+      "shape": "chain",
+      "nodes": 300,
+      "samples": 5,
+      "medianMs": 132.461,
+      "minMs": 129.036,
+      "maxMs": 147.313
+    },
+    {
+      "legacy": false,
+      "shape": "chain",
+      "nodes": 300,
+      "samples": 5,
+      "medianMs": 4.041,
+      "minMs": 3.899,
+      "maxMs": 5.824
+    },
+    {
+      "legacy": true,
+      "shape": "star",
+      "nodes": 1000,
+      "samples": 5,
+      "medianMs": 590.845,
+      "minMs": 585.178,
+      "maxMs": 595.491
+    },
+    {
+      "legacy": false,
+      "shape": "star",
+      "nodes": 1000,
+      "samples": 5,
+      "medianMs": 8.14,
+      "minMs": 7.791,
+      "maxMs": 9.404
+    },
+    {
+      "legacy": true,
+      "shape": "star",
+      "nodes": 10000,
+      "samples": 1,
+      "medianMs": 66186.635,
+      "minMs": 66186.635,
+      "maxMs": 66186.635
+    },
+    {
+      "legacy": false,
+      "shape": "star",
+      "nodes": 10000,
+      "samples": 5,
+      "medianMs": 57.026,
+      "minMs": 46.507,
+      "maxMs": 62.818
+    },
+    {
+      "legacy": true,
+      "shape": "chain",
+      "nodes": 100,
+      "samples": 5,
+      "medianMs": 34.6,
+      "minMs": 27.136,
+      "maxMs": 50.709
+    },
+    {
+      "legacy": false,
+      "shape": "chain",
+      "nodes": 100,
+      "samples": 5,
+      "medianMs": 4.073,
+      "minMs": 3.558,
+      "maxMs": 6.871
+    },
+    {
+      "legacy": true,
+      "shape": "chain",
+      "nodes": 300,
+      "samples": 5,
+      "medianMs": 145.561,
+      "minMs": 125.689,
+      "maxMs": 147.372
+    },
+    {
+      "legacy": false,
+      "shape": "chain",
+      "nodes": 300,
+      "samples": 5,
+      "medianMs": 4.759,
+      "minMs": 3.191,
+      "maxMs": 5.559
+    },
+    {
+      "legacy": true,
+      "shape": "star",
+      "nodes": 1000,
+      "samples": 5,
+      "medianMs": 614.95,
+      "minMs": 608.88,
+      "maxMs": 638.417
+    },
+    {
+      "legacy": false,
+      "shape": "star",
+      "nodes": 1000,
+      "samples": 5,
+      "medianMs": 7.504,
+      "minMs": 7.248,
+      "maxMs": 9.323
+    },
+    {
+      "legacy": true,
+      "shape": "star",
+      "nodes": 10000,
+      "samples": 1,
+      "medianMs": 61036.115,
+      "minMs": 61036.115,
+      "maxMs": 61036.115
+    },
+    {
+      "legacy": false,
+      "shape": "star",
+      "nodes": 10000,
+      "samples": 5,
+      "medianMs": 58.194,
+      "minMs": 46.948,
+      "maxMs": 69.701
+    }
+  ],
+  "smokeChecks": [
+    "PASS registered menus 649.48 ms",
+    "PASS settings validation and screenshot 706.79 ms",
+    "PASS project cache invalidation deletes tracked DOT files without an editor 15.89 ms",
+    "PASS analyzer view constructs and disposes its menus and background lifecycle 614.31 ms",
+    "PASS removal targets one exact scope and keeps valid comma syntax 677.78 ms",
+    "PASS exclusion changes only the selected declaration 52.33 ms",
+    "PASS stale edit preview cannot overwrite a newer document 12.69 ms",
+    "PASS PSI coordinates % retain percent characters in literals 164.50 ms",
+    "PASS PSI coordinates %% retain percent characters in literals 11.78 ms",
+    "PASS PSI coordinates %%% retain percent characters in literals 11.20 ms",
+    "PASS PSI resolves separate group artifact version and configuration vals 207.63 ms",
+    "PASS PSI modifier arguments do not leak into coordinates 14.32 ms",
+    "PASS PSI traverses typed sequences concatenation and result blocks 36.30 ms",
+    "PASS PSI scoped libraryDependencies inherit the configuration 10.88 ms",
+    "PASS PSI alias removal edits the use rather than shared ModuleID definition 23.05 ms",
+    "PASS PSI shared dependency sequences remain navigable and cannot be accidentally edited 17.66 ms",
+    "PASS PSI cyclic references terminate and computed expressions are not guessed 28.27 ms",
+    "PASS PSI exclusion preserves configuration and chained modifiers 18.13 ms",
+    "PASS PSI removal skips comments to remove the correct comma 13.81 ms",
+    "PASS PSI direct removal in settings removes its separator 37.74 ms",
+    "PASS PSI legacy in scope and custom configurations are resolved 42.77 ms",
+    "PASS PSI project matching uses explicit ID and ignores names paths comments and dependency strings 12.25 ms",
+    "PASS PSI project scoped settings resolve project aliases and ThisBuild separately 19.88 ms",
+    "PASS PSI platform settings include shared and only the selected platform 33.48 ms",
+    "PASS PSI aggregate project arguments do not leak settings into the selected project 11.15 ms"
+  ],
+  "productionClassCount": 236,
+  "artifact": {
+    "path": "target/sbt-dependency-analyzer-0.11.0.zip",
+    "sizeBytes": 6579894,
+    "sha256": "536b7f2b3b2efa26fcbe2c2fe60e754e0f1004753ea7456dee86cec0ce384411",
+    "signed": false
+  },
+  "smokeCheckDurationMs": 3444.07,
+  "smokeNotes": [
+    "Isolated opened temporary IntelliJ project with real Scala PSI; individual checks exclude SDK startup and project opening.",
+    "25 checks include 18 declaration/project PSI cases; live sbt import of the entire multi-platform matrix is not a claimed manual validation."
+  ],
+  "buildScala": "3.9.0",
+  "buildSbt": "1.13.0",
+  "formatter": "3.11.5",
+  "benchmarkToolchain": {
+    "scala": "3.8.4",
+    "sbt": "1.12.13",
+    "note": "Recorded before rebase onto upstream toolchain upgrades; benchmark not rerun for PR integration."
+  }
+}

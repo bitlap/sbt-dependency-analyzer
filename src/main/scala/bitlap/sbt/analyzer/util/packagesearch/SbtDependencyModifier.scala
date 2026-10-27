@@ -33,8 +33,11 @@ import com.intellij.openapi.module as OpenapiModule
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiManager
 
-// copy from https://github.com/JetBrains/intellij-scala/blob/idea242.x/scala/integration/packagesearch/src/org/jetbrains/plugins/scala/packagesearch/SbtDependencyModifier.scala
-// we have changed some
+// Adapted from https://github.com/JetBrains/intellij-scala/blob/idea242.x/scala/integration/packagesearch/src/org/jetbrains/plugins/scala/packagesearch/SbtDependencyModifier.scala
+/** Adapts sbt dependency and repository operations to the IDE package-search modification API. Uses legacy PSI helpers;
+ *  analyzer Remove/Exclude actions use DependencyEditPlan for reviewed edits. Adapted from JetBrains intellij-scala
+ *  SbtDependencyModifier (idea242.x).
+ */
 object SbtDependencyModifier extends ExternalDependencyModificator {
 
   private val logger = Logger.getInstance(this.getClass)
@@ -48,7 +51,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
     val dependencyPlaces = inReadAction(for {
       sbtFile <- sbtFileOpt
       psiSbtFile    = PsiManager.getInstance(project).findFile(sbtFile).asInstanceOf[ScalaFile]
-      sbtFileModule = psiSbtFile.module.orNull
+      sbtFileModule = psiSbtFile.module.getOrElse(null)
       topLevelPlace =
         if (
           sbtFileModule != null && (sbtFileModule == module || sbtFileModule.getName == s"""${module.getName}-build""")
@@ -93,8 +96,8 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
         project,
         module,
         currentDependency,
-        configurationRequired = false,
-        versionRequired = false
+        configurationRequired = true,
+        versionRequired = true
       )
     if (targetedLibDepTuple == null) return
     val oldLibDep = SbtDependencyUtils.processLibraryDependencyFromExprAndString(targetedLibDepTuple, preserve = true)
@@ -147,18 +150,9 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
     }
   }
 
-  /** * Support syntaxes: e.g.
-   *
-   *  [["x" % "y" % Versions.z withSources ()]]
-   *
-   *  [["x" %% "y" % Versions.z % Test]]
-   *
-   *  [["x" % "y" % z]]
-   *
-   *  [[libraryDependencies ++= Seq("x" % "y" % z)]]
-   *
-   *  @param module
-   *  @param toRemoveDependency
+  /** Removes a uniquely matched dependency using the legacy package-search PSI path. Supports argument-list entries and
+   *  += assignments; unresolved or unsupported targets fail explicitly. Analyzer menu edits use DependencyEditPlan
+   *  instead.
    */
   override def removeDependency(module: OpenapiModule.Module, toRemoveDependency: UnifiedDependency): Unit = {
     implicit val project: Project = module.getProject
@@ -167,8 +161,8 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
         project,
         module,
         toRemoveDependency,
-        configurationRequired = false,
-        versionRequired = false
+        configurationRequired = true,
+        versionRequired = true
       )
     if (targetedLibDepTuple == null) {
       throw AnalyzerCommandNotFoundException("The target dependency is missing.")
@@ -204,7 +198,7 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
     implicit val project: Project = module.getProject
     val sbtFileOpt                = SbtDependencyUtils.getSbtFileOpt(module)
     if (sbtFileOpt == null) return
-    val sbtFile = sbtFileOpt.orNull
+    val sbtFile = sbtFileOpt.getOrElse(null)
     if (sbtFile == null) return
     val psiSbtFile = PsiManager.getInstance(project).findFile(sbtFile).asInstanceOf[ScalaFile]
 
@@ -248,8 +242,8 @@ object SbtDependencyModifier extends ExternalDependencyModificator {
         project,
         module,
         currentDependency,
-        configurationRequired = false,
-        versionRequired = false
+        configurationRequired = true,
+        versionRequired = true
       )
     if (targetedLibDepTuple == null) return false
     // add `(expr).exclude('group', 'artifact')`

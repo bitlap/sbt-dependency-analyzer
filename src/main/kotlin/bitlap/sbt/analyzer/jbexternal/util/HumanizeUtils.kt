@@ -8,6 +8,7 @@ import kotlin.math.pow
 
 // Also see:
 // https://developer.android.com/reference/android/text/format/DateUtils.html#formatElapsedTime(long)
+/** Formats elapsed milliseconds as mm:ss or hh:mm:ss, discarding sub-second precision. */
 val Long.formatMsAsDuration: String
     get() {
         fun normalize(number: Long): String = String.format("%02d", number)
@@ -20,9 +21,11 @@ val Long.formatMsAsDuration: String
         }
     }
 
+/** Formats a non-negative byte count using the Long binary-size formatter. */
 val Int.formatAsFileSize: String
     get() = toLong().formatAsFileSize
 
+/** Formats a non-negative byte count in powers of 1024 with magnitude-dependent decimal precision. */
 val Long.formatAsFileSize: String
     get() = log2(if (this != 0L) toDouble() else 1.0).toInt().div(10).let {
         val precision = when (it) {

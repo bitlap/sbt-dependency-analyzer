@@ -33,6 +33,7 @@ internal fun emptyListBorder(): Border {
     return JBUI.Borders.empty()
 }
 
+/** Creates a scaled cell border with outer spacing and optional tree-like indentation. */
 internal fun emptyListCellBorder(list: JList<*>, index: Int, indent: Int = 0): Border {
     val topGap = if (index > 0) BORDER / 2 else BORDER
     val bottomGap = if (index < list.model.size - 1) BORDER / 2 else BORDER
@@ -56,15 +57,18 @@ internal fun horizontalPanel(vararg components: JComponent) =
     JPanel().apply { layout = ListLayout.horizontal(0) }.apply { border = JBUI.Borders.empty() }
         .apply { components.forEach(::add) }
 
+/** Creates a horizontal splitter whose proportion is persisted under proportionKey. */
 internal fun horizontalSplitPanel(
     proportionKey: @NonNls String, proportion: Float, configure: OnePixelSplitter.() -> Unit
 ) = OnePixelSplitter(false, proportionKey, proportion).apply { configure() }
 
+/** Creates panels lazily for card keys using the supplied factory. */
 internal fun <T> cardPanel(createPanel: (T) -> JComponent) = object : CardLayoutPanel<T, T, JComponent>() {
     override fun prepare(key: T) = key
     override fun create(ui: T) = createPanel(ui)
 }
 
+/** Binds a dumb-aware toggle action to an observable Boolean property; presentation updates run on the EDT. */
 internal fun toggleAction(property: ObservableMutableProperty<Boolean>): ToggleAction =
     object : ToggleAction(), DumbAware {
         override fun isSelected(e: AnActionEvent) = property.get()
