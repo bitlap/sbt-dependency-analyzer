@@ -53,7 +53,8 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
     scalacOptions ++= Seq(
       "-deprecation",
 //      "-Xfatal-warnings",
-      "-Ybackend-parallelism:16" // https://github.com/scala/scala3/pull/15392
+      // Keep class loading serial: parallel backend workers can race while reading Scala plugin classes.
+      "-Ybackend-parallelism:1"
 //       "-nowarn", // during migration
 //      "-rewrite",
 //      "-source:3.7-migration"
