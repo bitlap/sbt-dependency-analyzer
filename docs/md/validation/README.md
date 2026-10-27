@@ -134,7 +134,7 @@ Scala 插件的 shell 启动流程使用默认 `invokeAndWait` 切回 EDT，在�
 
 冒烟测试使用临时真实 `.sbt` 文件和 PSI，验证了声明解析与模块归属、同坐标不同 Scope 的精确删除、传递依赖排除及并发修改后的过期预览保护。
 
-隔离 IDEA 已验证声明编辑的 Undo/Redo；尚未对真实大项目完成全流程鼠标/键盘操作、长时间内存采样和 sbt shell 端到端压力测试。完整手工矩阵和复现命令见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
+隔离 IDEA 已验证声明编辑的 Undo/Redo；尚未对真实大项目完成全流程鼠标/键盘操作、长时间内存采样和 sbt shell 端到端压力测试。完整手工矩阵和复现命令见 [CONTRIBUTING.md](../../../CONTRIBUTING.md)。
 
 多独立构建仍受 Scala 插件单活动 shell 的限制；通过 RootProject/ProjectRef 加载的外部构建使用完整 URI 引用分析，未在活动 shell 中加载的独立链接构建会被拒绝，防止展示错误构建的数据。图模型仍按使用路径展开，超过 512 层或 100,000 条展开路径会明确停止，而不是静默裁剪依赖。
 

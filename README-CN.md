@@ -18,7 +18,7 @@
 - **声明导航与修改**：定位依赖声明，预览删除直接依赖或从父依赖中排除传递依赖。
 - **JAR 大小**：按需查看依赖大小，合计时对相同坐标去重。
 
-![依赖树、版本冲突与引用路径示例](docs/dependencyTreeConflicts.jpg)
+![依赖树、版本冲突与引用路径示例](docs/image/dependencyTreeConflicts.jpg)
 
 ## 快速开始
 
@@ -81,7 +81,7 @@
 
 ## 开发与验证
 
-构建、测试、沙盒启动及发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。性能测量、PSI 回归及测试边界见 [验证记录](docs/validation/README.md)。
+构建、测试、沙盒启动及发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。性能测量、PSI 回归及测试边界见 [验证记录](docs/md/validation/README.md)。
 
 欢迎提交 [Issue](https://github.com/bitlap/sbt-dependency-analyzer/issues) 或 Pull Request。感谢 [JetBrains](https://www.jetbrains.com/) 提供开发工具支持。
 

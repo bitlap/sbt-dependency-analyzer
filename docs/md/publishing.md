@@ -4,7 +4,7 @@
 
 ## 构建和校验
 
-先按 [贡献指南](../CONTRIBUTING.md)运行发布前测试和兼容性检查，再构建并校验：
+先按 [贡献指南](../../CONTRIBUTING.md)运行发布前测试和兼容性检查，再构建并校验：
 
 ```sh
 python3 tools/upload-plugin.py --build --dry-run

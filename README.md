@@ -18,7 +18,7 @@ Inspect sbt dependency trees, trace version conflicts, and navigate to or edit d
 - **Source navigation and edits**: Find declarations and preview direct dependency removal or transitive dependency exclusion.
 - **JAR sizes**: Load sizes on demand and deduplicate resolved coordinates when calculating totals.
 
-![Dependency tree, version conflicts and usage paths](docs/dependencyTreeConflicts.jpg)
+![Dependency tree, version conflicts and usage paths](docs/image/dependencyTreeConflicts.jpg)
 
 ## Quick start
 
@@ -81,7 +81,7 @@ Wait for any active import or build to finish, then use `reload` or `compile` in
 
 ## Development and validation
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for builds, tests, sandbox launch and release instructions. The [validation record](docs/validation/README.md) contains performance measurements, PSI regression results and test boundaries.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for builds, tests, sandbox launch and release instructions. The [validation record](docs/md/validation/README.md) contains performance measurements, PSI regression results and test boundaries.
 
 [Issues](https://github.com/bitlap/sbt-dependency-analyzer/issues) and pull requests are welcome. Thanks to [JetBrains](https://www.jetbrains.com/) for supporting development tools.
 

@@ -46,7 +46,7 @@ python3 tools/test-sbt-workflows.py
 - IDE 回归运行真实 IntelliJ / Scala PSI、Swing 组件、命令栈、通知总线和后台队列。无界面 ApplicationStarter 持有 UI intent lock，等待异步 read action 时测试会临时释放该锁并派发事件；等待有明确超时。
 - sbt 异常与取消通过替换 `RefreshSnapshotsTask` 的命令传输模拟，保留生产的设置加入、更新及 finally 清理流程。真实 sbt 夹具补充验证实际 scoped 命令与文件输出，但不替代 IDEA 内的 shell 通信全流程。
 - 多候选动作测试提供真实 PSI 候选；后台视图测试通过内部属性和加载入口控制输入，执行实际筛选、树构建和过期保护。测试包含有意制造的失败，日志中的对应 WARN 不代表断言失败。
-- JVM / JS / Native 的匹配与 crossProject 设置通过元数据和 PSI 夹具验证。实际跨平台插件下载、Marketplace 动态安装、键盘焦点/弹窗点击矩阵、长时间内存和真实大项目端到端压力测试仍按 [手工矩阵](../CONTRIBUTING.md#manual-sandbox-matrix) 执行。
+- JVM / JS / Native 的匹配与 crossProject 设置通过元数据和 PSI 夹具验证。实际跨平台插件下载、Marketplace 动态安装、键盘焦点/弹窗点击矩阵、长时间内存和真实大项目端到端压力测试仍按 [手工矩阵](../../CONTRIBUTING.md#manual-sandbox-matrix) 执行。
 - 当前覆盖是核心流程及已知边界的行为覆盖，不等同于全部语法、平台和时序组合的穷举，也未将其表述为行覆盖率 100%。
 
 - 自定义工厂回归使用导入的 sbt ID、构建 URI 和模块根目录匹配源码，覆盖链式辅助函数、命名参数、字符串插值及 JVM/JS/Native 目录；重复路径、递归和动态返回拒绝猜测。三个真实导入模型夹具验证动作启用、删除/排除、相邻模块保留、再次解析及 Undo/Redo。
