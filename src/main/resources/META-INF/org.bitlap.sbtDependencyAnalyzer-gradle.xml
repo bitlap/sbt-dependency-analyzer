@@ -2,12 +2,12 @@
     <actions>
         <action id="Gradle.ToolbarDependencyAnalyzer"
                 overrides="true"
-                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction"/>
+                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction$Toolbar"/>
         <action id="Gradle.ViewDependencyAnalyzer"
                 overrides="true"
-                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction"/>
+                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction$View"/>
         <action id="Gradle.ProjectViewDependencyAnalyzer"
                 overrides="true"
-                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction"/>
+                class="bitlap.sbt.analyzer.jbexternal.GradleAnalyzerContextAction$ProjectView"/>
     </actions>
 </idea-plugin>

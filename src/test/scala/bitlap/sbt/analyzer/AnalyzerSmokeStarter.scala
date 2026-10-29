@@ -59,7 +59,7 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
           ) => Unit =
             (_, _, completed) => { attempts += 1; completed(true) }
           activity.PluginUpdateActivity.checkUpdate(project, open)
-          assert(properties.getValue(key) == SbtDependencyAnalyzerPlugin.descriptor.getVersion)
+          assert(properties.getValue(key) == SbtDependencyAnalyzerPlugin.details.getVersion)
           activity.PluginUpdateActivity.checkUpdate(project, open)
           assert(attempts == 1, "Repeated startup must not reopen an acknowledged version")
         } finally {
@@ -101,7 +101,7 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
           "What's New",
           activity.WhatsNew.pageHtml(
             "What’s new in Sbt Dependency Analyzer",
-            SbtDependencyAnalyzerPlugin.descriptor.getChangeNotes,
+            SbtDependencyAnalyzerPlugin.details.getChangeNotes,
             "https://github.com/bitlap/sbt-dependency-analyzer/releases/tag/v0.11.0",
             "0.11.0"
           )

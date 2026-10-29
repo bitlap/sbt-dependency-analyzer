@@ -1,14 +1,15 @@
 package bitlap.sbt.analyzer
 
-import com.intellij.ide.plugins.{ IdeaPluginDescriptor, PluginManager }
+import com.intellij.ide.plugins.PluginDetailsService
+import com.intellij.ide.plugins.PluginDetailsService.PluginDetails
+import com.intellij.openapi.extensions.PluginId
 
-/** Provides the installed plugin descriptor and stable plugin ID used by services and update tracking. */
+/** Provides installed plugin metadata and the stable ID used by services and update tracking. */
 object SbtDependencyAnalyzerPlugin {
 
   val PLUGIN_ID = "org.bitlap.sbtDependencyAnalyzer"
 
-  val descriptor: IdeaPluginDescriptor = PluginManager.getPlugins
-    .find(_.getPluginId.getIdString == PLUGIN_ID)
+  val details: PluginDetails = Option(PluginDetailsService.getInstance().findDetails(PluginId.getId(PLUGIN_ID)))
     .getOrElse(throw new IllegalStateException(s"Plugin $PLUGIN_ID not found"))
 
 }

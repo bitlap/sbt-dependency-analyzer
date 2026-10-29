@@ -1,9 +1,9 @@
 # Development and validation
 
-Use JDK 21 and the sbt version in `project/build.properties`. On macOS:
+Use JDK 25 and the sbt version in `project/build.properties`. On macOS:
 
 ```sh
-export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+export JAVA_HOME=$(/usr/libexec/java_home -v 25)
 sbt clean test psiTest
 sbt check
 sbt runPluginVerifier
@@ -14,7 +14,7 @@ The development sandbox uses a separate IntelliJ configuration. The first build 
 
 ## Supported platform
 
-The default SDK is IntelliJ IDEA 2026.1.3 / `261.25134.95`, with Scala plugin resolved for that SDK. Plugin metadata limits installation to 261.x. Set `IDEA_BUILD` explicitly to evaluate another build, and run compilation, tests and Plugin Verifier before changing the supported range. Android Studio and 262.x are not currently claimed as verified targets.
+The default SDK is IntelliJ IDEA 2026.2.3 / `262.10968.63`, with Scala plugin resolved for that SDK. This platform requires JDK 25; CI uses the same Java version. Plugin metadata limits installation to 262.x. Set `IDEA_BUILD` explicitly to evaluate another build, and run compilation, tests and Plugin Verifier before changing the supported range. Android Studio is not currently claimed as a verified target. See the [upgrade validation record](docs/md/idea-2026.2.3-compatibility.md) for API adaptations and test boundaries.
 
 ## Reproducible parser benchmark
 
@@ -49,7 +49,7 @@ Signing is disabled for normal builds. For a release set `SIGN_PLUGIN=true`, `PL
 Run `sbt psiTest` after changes to declaration matching, project identity or edit planning. CI runs both `test` and `psiTest`. To invoke the isolated runner directly after compilation/packaging:
 
 ```sh
-IDE_HOME=/absolute/path/to/the/261.25134.95/sdk python3 tools/run-smoke.py
+IDE_HOME=/absolute/path/to/the/262.10968.63/sdk python3 tools/run-smoke.py
 ```
 
 The test-only plugin starts a separate headless IntelliJ process with isolated settings, system directory and fixtures in `target/smoke`. It checks action registration, settings validation, cache invalidation without an editor, analyzer view creation/disposal, exact dependency edits and stale-preview protection. It renders the actual settings and edit-preview Swing components to `target/smoke/results/*.png`. These are component captures, not screenshots of manual interaction with a running sbt build. Generated results and images remain under `target/smoke/results/` and are not committed. The helper plugin is not shipped with production artifacts.

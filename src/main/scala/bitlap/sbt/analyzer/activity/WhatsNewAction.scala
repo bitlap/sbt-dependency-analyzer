@@ -16,6 +16,6 @@ final class WhatsNewAction extends DumbAwareAction {
   )
 
   override def actionPerformed(e: AnActionEvent): Unit = {
-    WhatsNew.browse(Version(SbtDependencyAnalyzerPlugin.descriptor.getVersion), e.getProject)
+    WhatsNew.browse(Version(SbtDependencyAnalyzerPlugin.details.getVersion), e.getProject)
   }
 }

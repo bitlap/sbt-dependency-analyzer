@@ -3,7 +3,7 @@
 
 IDE_HOME, PLUGIN_DIR and VERIFIER_VERSION can override defaults. Download the verifier
 when missing, prepare a local dependency archive, and write reports under target/verifier.
-This verifies binary compatibility, not full interactive behavior."""
+This verifies binary compatibility and rejects internal API usage, not full interactive behavior."""
 import os
 from pathlib import Path
 import shutil
@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
-sdk = Path(os.environ.get("IDE_HOME", Path.home() / ".SbtDependencyAnalyzerPluginIC/sdk" / os.environ.get("IDEA_BUILD", "261.25134.95"))).resolve()
+sdk = Path(os.environ.get("IDE_HOME", Path.home() / ".SbtDependencyAnalyzerPluginIC/sdk" / os.environ.get("IDEA_BUILD", "262.10968.63"))).resolve()
 plugin = Path(os.environ.get("PLUGIN_DIR", root / "target/plugin/SbtDependencyAnalyzer")).resolve()
 work = root / "target/verifier"
 version = os.environ.get("VERIFIER_VERSION", "1.402")
@@ -65,7 +65,8 @@ for verdict in verdicts:
     print(f"Verifier verdict: {text.strip()}")
     if not text.startswith("Compatible."):
         sys.exit(1)
-    for name in ("compatibility-problems.txt", "compatibility-warnings.txt"):
+    for name in ("compatibility-problems.txt", "compatibility-warnings.txt", "internal-api-usages.txt"):
         problems = verdict.parent / name
         if problems.exists() and problems.read_text().strip():
+            print(f"Verification rejected: {problems}", file=sys.stderr)
             sys.exit(1)

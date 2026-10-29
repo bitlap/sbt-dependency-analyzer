@@ -30,7 +30,8 @@ import com.intellij.openapi.vfs.LocalFileSystem
 object AnalyzerSmokeStarterSourceActions {
 
   def run(project: Project, check: (String, () => Unit) => Unit): Unit = {
-    val coordinate = "\"g\" %% \"a\" % \"1\""
+    def smart[A](body: => A): A = AnalyzerSmokeStarterCore.smartRead(project)(body)
+    val coordinate              = "\"g\" %% \"a\" % \"1\""
     for (
       (label, expression, scope, renamed) <- Seq(
         ("direct", coordinate, "compile", false),
@@ -132,7 +133,7 @@ object AnalyzerSmokeStarterSourceActions {
               }
             })
             assert(
-              DependencyUtils.getDeclaredDependency(modules.head).isEmpty,
+              smart(DependencyUtils.getDeclaredDependency(modules.head)).isEmpty,
               "Fixture unexpectedly has imported metadata"
             )
             ExternalProjectsManagerImpl
@@ -149,10 +150,11 @@ object AnalyzerSmokeStarterSourceActions {
             val module = modules.head
             assert(SbtUtil.getSbtProjectUriAndId(module).exists(_.id == moduleId), "Imported sbt identity unavailable")
             assert(findModule(project, md) == module, "Analyzer module lookup failed")
+            var declarations = smart(DependencyUtils.getDeclaredDependency(module))
             AnalyzerSmokeStarterCore.eventually("imported declarations recover after an early empty lookup") {
-              DependencyUtils.getDeclaredDependency(module).nonEmpty
+              declarations = smart(DependencyUtils.getDeclaredDependency(module))
+              declarations.nonEmpty
             }
-            val declarations = DependencyUtils.getDeclaredDependency(module)
             assert(declarations.nonEmpty, "Production declaration lookup returned no declarations")
             val moduleData = new DAModule("actual")
             moduleData.putUserData(Module_Data, md)
@@ -180,13 +182,13 @@ object AnalyzerSmokeStarterSourceActions {
             val remove = new SbtDependencyAnalyzerExcludeAction
             for (action <- Seq(goto, remove)) {
               val e = event(action)
-              action.update(e)
+              smart(action.update(e))
               assert(
                 e.getPresentation.isEnabled,
                 s"${action.getClass.getSimpleName}: ${e.getPresentation.getDescription}"
               )
             }
-            val target = SbtDependencyAnalyzerActionUtil.getModifiableDependency(event(remove))
+            val target = smart(SbtDependencyAnalyzerActionUtil.getModifiableDependency(event(remove)))
             assert(target.navigationDeclarations.size == 1 && target.candidateDeclaredDependencies.size == 1)
             if (label == "direct")
               check(
@@ -215,13 +217,13 @@ object AnalyzerSmokeStarterSourceActions {
                   val presentation = event(remove)
                   invalidNodes.foreach { invalid =>
                     selected = invalid
-                    remove.update(presentation)
+                    smart(remove.update(presentation))
                     assert(presentation.getPresentation.isVisible && !presentation.getPresentation.isEnabled)
                     assert(
                       presentation.getPresentation.getDescription == SbtDependencyAnalyzerBundle
                         .message("analyzer.action.edit.libraryOnly")
                     )
-                    assert(SbtDependencyAnalyzerActionUtil.getEditableDependency(presentation) == null)
+                    assert(smart(SbtDependencyAnalyzerActionUtil.getEditableDependency(presentation)) == null)
                     remove.actionPerformed(presentation)
                     assert(source.getText == before, "Unsupported dependency modified the build")
                   }
@@ -244,9 +246,9 @@ object AnalyzerSmokeStarterSourceActions {
                     assert(source.getText == before)
                   }
                   selected = direct
-                  remove.update(presentation)
+                  smart(remove.update(presentation))
                   assert(presentation.getPresentation.isEnabled, "Valid library selection did not recover")
-                  assert(SbtDependencyAnalyzerActionUtil.getEditableDependency(presentation) != null)
+                  assert(smart(SbtDependencyAnalyzerActionUtil.getEditableDependency(presentation)) != null)
                 }
               )
             val expectedSource = target.navigationDeclarations.head.getDataContext
@@ -256,17 +258,19 @@ object AnalyzerSmokeStarterSourceActions {
               .getContainingFile
               .getOriginalFile
               .getVirtualFile
-            assert(goto.getNavigatable(event(goto)) != null, "Source navigation has no physical target")
+            assert(smart(goto.getNavigatable(event(goto))) != null, "Source navigation has no physical target")
             assert(expectedSource != null, "Resolved source has no original virtual file")
-            goto.actionPerformed(event(goto))
-            assert(com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).isFileOpen(expectedSource))
+            AnalyzerSmokeStarterCore.eventually("Goto opens the resolved declaration") {
+              goto.actionPerformed(event(goto))
+              com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).isFileOpen(expectedSource)
+            }
             selected = transitive
             val transitiveGoto = event(goto)
-            goto.update(transitiveGoto)
+            smart(goto.update(transitiveGoto))
             assert(transitiveGoto.getPresentation.isEnabled, "Transitive Goto did not find the introducing declaration")
-            assert(goto.getNavigatable(transitiveGoto) != null)
+            assert(smart(goto.getNavigatable(transitiveGoto)) != null)
             val e = event(remove)
-            remove.update(e)
+            smart(remove.update(e))
             assert(e.getPresentation.isEnabled, e.getPresentation.getDescription)
             assert(e.getPresentation.getText.contains("Exclude"), e.getPresentation.getText)
             val declaration =
@@ -278,14 +282,14 @@ object AnalyzerSmokeStarterSourceActions {
               false
             )
             excludePlan.apply()
-            val afterExclude = DependencyUtils.getDeclaredDependency(module)
+            val afterExclude = smart(DependencyUtils.getDeclaredDependency(module))
             assert(
               afterExclude.exists(_.getCoordinates.getArtifactId == "a"),
               "Edited declarations must remain discoverable: " + excludePlan.after
             )
             if (shared) assert(excludePlan.after.startsWith(prefix), "Shared definition changed")
             selected = direct
-            val afterTarget = SbtDependencyAnalyzerActionUtil.getModifiableDependency(event(remove))
+            val afterTarget = smart(SbtDependencyAnalyzerActionUtil.getModifiableDependency(event(remove)))
             assert(afterTarget != null && afterTarget.candidateDeclaredDependencies.nonEmpty)
             val afterDeclaration =
               afterTarget.candidateDeclaredDependencies.head.getDataContext.getData(DependencyDeclaration.Key)
@@ -297,7 +301,7 @@ object AnalyzerSmokeStarterSourceActions {
                 removal.after.contains("libraryDependencies += \"other\" %% \"keep\" % \"9\""),
                 "Sibling module changed"
               )
-            val remaining = DependencyUtils.getDeclaredDependency(module)
+            val remaining = smart(DependencyUtils.getDeclaredDependency(module))
             assert(
               !remaining.exists(_.getCoordinates.getArtifactId == "a"),
               "Removed declaration remains in source lookup"
@@ -313,10 +317,14 @@ object AnalyzerSmokeStarterSourceActions {
                 assert(undo.isUndoAvailable(editor))
                 undo.undo(editor)
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
-                assert(DependencyUtils.getDeclaredDependency(module).exists(_.getCoordinates.getArtifactId == "a"))
+                assert(
+                  smart(DependencyUtils.getDeclaredDependency(module)).exists(_.getCoordinates.getArtifactId == "a")
+                )
                 undo.redo(editor)
                 com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
-                assert(!DependencyUtils.getDeclaredDependency(module).exists(_.getCoordinates.getArtifactId == "a"))
+                assert(
+                  !smart(DependencyUtils.getDeclaredDependency(module)).exists(_.getCoordinates.getArtifactId == "a")
+                )
               } finally provider.disposeEditor(editor)
             }
           } finally {

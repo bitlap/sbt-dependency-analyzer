@@ -33,6 +33,8 @@ python3 tools/test-sbt-workflows.py
 
 ## 本轮验证结果
 
+2026-10-29 升级后的最新结果见 [IDEA 2026.2.3 验证记录](idea-2026.2.3-compatibility.md)。以下保留此前验证快照。
+
 2026-10-27 本地验证通过：
 
 - `sbt test`：73 项，断言运行时间 1.597 秒（不含构建准备）。

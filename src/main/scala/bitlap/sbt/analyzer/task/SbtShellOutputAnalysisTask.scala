@@ -5,7 +5,7 @@ package task
 
 import scala.concurrent.*
 
-import org.jetbrains.sbt.shell.SbtShellCommunication
+import org.jetbrains.sbt.shell.communication.SbtShellCommandSubmitter
 
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -20,7 +20,7 @@ trait SbtShellOutputAnalysisTask[T]:
   protected final def getCommandOutput(project: Project, command: String): String = {
     val output = SbtTaskRunner.await(
       project,
-      SbtTaskRunner.submit(project)(SbtShellCommunication.forProject(project).command(command))
+      SbtTaskRunner.submit(project)(SbtShellCommandSubmitter.instance(project).runAndCollectOutput(command))
     )
     val errors = output.linesIterator.filter(_.startsWith("[error]")).toList
     if (errors.nonEmpty) throw new IllegalStateException(errors.mkString("\n"))

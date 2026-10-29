@@ -8,7 +8,7 @@ import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyze
 import com.intellij.openapi.externalSystem.model.ProjectSystemId
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.observable.util.whenDisposed
+import com.intellij.openapi.util.Disposer
 
 /** Owns one analyzer virtual file per external system in an IDE project. Extension disposal closes the file. */
 @Service(Service.Level.PROJECT)
@@ -24,7 +24,7 @@ class DependencyAnalyzerManager(private val project: Project) {
         val file = files.getOrPut(systemId) {
             DependencyAnalyzerVirtualFile(project, systemId).also { file ->
                 DependencyAnalyzerExtension.createExtensionDisposable(systemId, project).also { extensionDisposable ->
-                    extensionDisposable.whenDisposed {
+                    Disposer.register(extensionDisposable) {
                         fileEditorManager.closeFile(file)
                         files.remove(systemId)
                     }

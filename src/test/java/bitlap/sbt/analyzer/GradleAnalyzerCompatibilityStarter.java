@@ -36,7 +36,7 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
 
   private void contexts(ActionManager manager) {
     AnAction action = manager.getAction(ACTION);
-    check("override is registered", action != null && action.getClass().getName().equals(WRAPPER));
+    check("override is registered", action != null && action.getClass().getName().equals(WRAPPER + "$Toolbar"));
     for (String system : new String[]{"SBT", "GRADLE", "MAVEN", null}) {
       AnActionEvent e = event(system);
       action.update(e);
@@ -139,7 +139,7 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
           new com.intellij.openapi.externalSystem.model.DataNode<>(com.intellij.openapi.externalSystem.model.ProjectKeys.PROJECT, pd, null));
       for (String actionId : new String[]{"Gradle.ViewDependencyAnalyzer", "Gradle.ProjectViewDependencyAnalyzer"}) {
         AnAction action = manager.getAction(actionId);
-        check(actionId + " popup override registered", action != null && action.getClass().getName().equals(WRAPPER));
+        check(actionId + " popup override registered", action != null && action.getClass().getName().equals(WRAPPER + (actionId.equals("Gradle.ViewDependencyAnalyzer") ? "$View" : "$ProjectView")));
         AnAction base = official(manager, action);
         for (var selected : java.util.Arrays.asList(node, child, projectNode, null)) {
           for (String system : new String[]{"SBT", "GRADLE", "MAVEN", null}) {
@@ -162,6 +162,24 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
             } else {
               check(label + " official visibility preserved", event.getPresentation().isVisible() == originalEvent.getPresentation().isVisible());
               check(label + " official enabled state preserved", event.getPresentation().isEnabled() == originalEvent.getPresentation().isEnabled());
+            }
+            if ("GRADLE".equals(system)) {
+              var wrappedAction = (com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerAction) action;
+              var originalAction = (com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerAction) base;
+              check(label + " platform system hook preserved", java.util.Objects.equals(
+                  wrappedAction.getSystemId(event), originalAction.getSystemId(originalEvent)));
+              var calls = new java.util.ArrayList<Object>();
+              var viewProxy = (com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView) java.lang.reflect.Proxy.newProxyInstance(
+                  getClass().getClassLoader(), new Class[]{com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView.class},
+                  (proxy, method, args) -> {
+                    calls.add(java.util.List.of(method.getName(), args == null ? java.util.List.of() : java.util.Arrays.asList(args)));
+                    return null;
+                  });
+              originalAction.setSelectedState(viewProxy, originalEvent);
+              var expected = java.util.List.copyOf(calls);
+              calls.clear();
+              wrappedAction.setSelectedState(viewProxy, event);
+              check(label + " platform selection hook preserved", calls.equals(expected));
             }
             check(label + " text and icon preserved", event.getPresentation().getText().equals(originalEvent.getPresentation().getText()) &&
                 event.getPresentation().getIcon().equals(originalEvent.getPresentation().getIcon()));
