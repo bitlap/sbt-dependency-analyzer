@@ -1,56 +1,67 @@
 # 发布到 JetBrains Marketplace
 
-`tools/upload-plugin.py` 使用 JetBrains Marketplace 的[官方上传 API](https://plugins.jetbrains.com/docs/marketplace/plugin-upload.html)提交插件更新。默认只校验和打包，必须显式指定 `--upload` 才上传。脚本需要 Python 3.9+；上传需要 curl，`--build` 需要 sbt 和项目构建所需的 JDK。
+使用 Shell 入口 `tools/upload-plugin.sh`：实际签名和上传分别交给 sbt-idea-plugin 的 `signPlugin`、`publishPlugin`。默认只检查源码发布信息；必须显式指定 `--upload` 才会上传。需要 Bash、Python 3.9+（仅用于离线 XML/ZIP 校验）、sbt 和项目要求的 JDK。
 
-## 构建和校验
-
-先按 [贡献指南](../../CONTRIBUTING.md)运行发布前测试和兼容性检查，再构建并校验：
+## 检查、构建和上传
 
 ```sh
-python3 tools/upload-plugin.py --build --dry-run
+# 默认离线检查；不读取令牌、不运行 sbt、不上传
+./tools/upload-plugin.sh --dry-run
+
+# 构建签名包并校验，不上传
+./tools/upload-plugin.sh --build
+
+# 签名、校验后上传到 Stable
+./tools/upload-plugin.sh --upload
+
+# 自定义发布渠道
+./tools/upload-plugin.sh --upload --channel eap
 ```
 
-脚本运行 `sbt packageArtifact`，读取 `target/plugin/SbtDependencyAnalyzer`，生成 `target/releases/SbtDependencyAnalyzer-<版本>.zip`。sbt 不在 PATH 时可传 `--sbt /absolute/path/to/sbt`。
+脚本可从其他工作目录运行。可用 `--sbt /path/to/sbt` 指定可执行文件；路径可以包含空格。`--channel Stable` 等同于默认渠道。原 Python 上传入口已移除；`tools/validate-plugin-release.py` 只负责离线校验和日志脱敏，没有网络上传功能。原生 `publishPlugin` 不支持隐藏更新参数，因此不再提供 `--hidden`。
 
-也可校验已有 ZIP；已有 ZIP 不会重新打包，保留签名内容：
+## 本地配置与 CI
+
+可直接设置环境变量，或使用默认本地文件 `~/.config/sbt-dependency-analyzer/credentials.env`（也支持 `XDG_CONFIG_HOME`）：
 
 ```sh
-python3 tools/upload-plugin.py target/releases/SbtDependencyAnalyzer-0.12.0.zip --dry-run
+JAVA_HOME='/path/to/jdk'
+PLUGIN_SIGN_CERT_FILE='/path/to/chain.crt'
+PLUGIN_SIGN_PRIVATE_KEY_FILE='/path/to/private.pem'
+PLUGIN_SIGN_KEY_PWD='your-private-key-password'
+IJ_PLUGIN_REPO_TOKEN='your-marketplace-token'
 ```
 
-构建前和上传前都会检查发布信息：
-
-- `build.sbt` 的 `pluginVersion` 必须与源码 `src/main/resources/META-INF/plugin.xml` 的 `<version>` 一致，避免构建自动覆盖 XML 版本后掩盖漏改。
-- `<change-notes>` 必须包含与当前版本一致的最新 `<h1>`，该条目须有实际说明内容；有历史条目时，当前版本必须高于前一条版本（支持 RC 序号及 RC 转正式版）。检查以本地更新说明历史为基准，不查询 Marketplace 已发布版本。
-- 发布包中的版本和完整更新说明必须与源码一致，同版本旧包也会拒绝，提示重新构建。
-- 另检查插件 ID、ZIP 结构和测试启动器是否混入发布包。
-
-检查失败会以非零状态退出，并在调用上传 API 前停止。脚本不会自动修改版本号或更新说明，历史条目应保留，在顶部新增本次版本及内容。成功后打印文件路径、SHA-256、发布渠道和隐藏状态。校验不访问 Marketplace，也不需要令牌。签名配置见贡献指南。
-
-## 上传
-
-在 Marketplace 个人账户的 **My Tokens** 中创建永久令牌，账户须有插件更新权限。通过本机环境或 CI Secret 注入 `JETBRAINS_MARKETPLACE_TOKEN`，不要把令牌写入脚本、仓库或命令行参数。
-
-确认上一步输出的 ZIP 后上传：
+也可显式指定文件：
 
 ```sh
-python3 tools/upload-plugin.py target/releases/SbtDependencyAnalyzer-0.12.0.zip --upload
+./tools/upload-plugin.sh --build --env-file /private/path/release.env
 ```
 
-默认提交到 Stable 渠道。自定义渠道和隐藏更新示例：
+配置文件按 Shell 语法加载，只使用自己维护的可信文件；不要将令牌、口令或私钥提交到仓库。建议本地配置和私钥仅允许本人读写。CI 可通过 Secret 注入相同环境变量，不需要配置文件。私钥没有口令时可以省略 `PLUGIN_SIGN_KEY_PWD`。脚本会启用 `SIGN_PLUGIN=true`；设置 `JAVA_HOME` 时将显式传入 sbt 的 `-java-home`，覆盖全局 sbt 选项中的旧 JDK。普通 sbt 构建仍默认禁用签名。
+
+令牌读取顺序与原生 sbt 发布任务一致：
+
+1. 非空的 `~/.ij-plugin-repo-token` 第一行。
+2. `IJ_PLUGIN_REPO_TOKEN`。
+3. `JETBRAINS_MARKETPLACE_TOKEN`，作为原生环境变量的兼容别名。
+
+脚本不会改写令牌文件。存在旧令牌文件时，需要更新该文件或移走它，不能仅设置环境变量来覆盖。签名需要有效私钥和匹配的证书链，见 JetBrains [签名说明](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html)。
+
+## 上传前检查
+
+- `build.sbt` 的 `pluginVersion` 与源码 `plugin.xml` 的 `<version>` 必须一致。
+- `<change-notes>` 的最新 `<h1>` 必须对应当前版本，并有实际说明内容；有历史版本时必须递增，支持 RC 序号及 RC 转正式版。以本地历史为基准，不查询 Marketplace 已发布版本。
+- 签名后检查 `target/signed-SbtDependencyAnalyzer-<版本>.zip`：必须包含正确插件 ID、版本和与源码一致的更新说明，ZIP 无损坏，包中无测试专用启动器。
+- 校验只读取签名 ZIP，不解包重组或重新压缩；上传任务固定使用这份已校验的签名包，不再次构建或签名。打印路径和 SHA-256 便于核对。
+
+校验失败时停止，不自动修改版本号或更新说明；历史条目应保留，在顶部新增当前版本说明。签名失败或上传失败均返回非零状态，日志会过滤令牌和私钥口令。上传不自动重试，连接中断后先检查 Marketplace 后台，避免重复提交。上传成功表示服务端接受请求，审核及上架状态以厂商后台为准。
+
+## 离线回归
 
 ```sh
-python3 tools/upload-plugin.py target/releases/SbtDependencyAnalyzer-0.12.0.zip --upload --channel eap --hidden
-```
-
-`--hidden` 对应官方 API 的 `isHidden=true`。脚本使用 XML 插件 ID `org.bitlap.sbtDependencyAnalyzer` 识别插件，令牌通过 curl 标准输入传入，不出现在子进程参数中。它不创建 Git 标签或 GitHub Release。
-
-请求成功表示 Marketplace 已接受上传，仍需在厂商后台查看审核和发布状态。网络失败时先检查后台，再决定是否重试；脚本不会自动重传，避免重复提交。本文版本号仅为使用示例，执行时应选择当前构建的文件。
-
-## 脚本测试
-
-```sh
+bash -n tools/upload-plugin.sh
 PYTHONDONTWRITEBYTECODE=1 python3 tools/test-upload-plugin.py
 ```
 
-测试使用临时插件包和模拟上传响应，覆盖源码和包内版本一致性、更新说明缺失/空白/版本倒退、同版本旧包、RC 递增，以及默认不上传、包校验、Stable/自定义渠道、隐藏更新、令牌脱敏和失败处理，不向 Marketplace 发送上传请求。CI 同样执行这些离线测试。
+测试使用临时插件包及假的 sbt 可执行文件，验证版本和更新说明、默认不发布、签名包固定、Stable/自定义渠道、含空格和引号的路径、令牌文件优先级、签名及上传失败、日志脱敏和不重试。测试不会向 Marketplace 发送请求。

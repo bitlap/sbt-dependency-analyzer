@@ -38,7 +38,7 @@ The [core workflow matrix](docs/md/testing.md) maps behavior to automated tests 
 
 ## Marketplace upload
 
-See [发布到 JetBrains Marketplace](docs/md/publishing.md) for the official upload script, local validation and token setup. Uploading requires an explicit `--upload`; ordinary builds and validation do not publish.
+See [发布到 JetBrains Marketplace](docs/md/publishing.md) for the Shell entry point backed by sbt `signPlugin` / `publishPlugin`, local validation and token setup. Uploading requires an explicit `--upload`; ordinary builds and validation do not publish.
 
 ## Release signing
 
