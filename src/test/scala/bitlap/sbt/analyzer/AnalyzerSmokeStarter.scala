@@ -387,6 +387,37 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
         } finally com.intellij.openapi.util.Disposer.dispose(owner)
         assert(previewEditors.nonEmpty && previewEditors.forall(_.isDisposed))
       }
+      check("removal and exclusion diff previews follow light and dark editor color schemes") {
+        val colors   = com.intellij.openapi.editor.colors.EditorColorsManager.getInstance()
+        val previous = colors.getGlobalScheme
+        try {
+          Seq("Default", "Darcula").foreach { name =>
+            val scheme = colors.getScheme(name)
+            assert(scheme != null, s"Missing bundled editor scheme: $name")
+            colors.setGlobalScheme(scheme)
+            Seq(true, false).foreach { remove =>
+              val plan = DependencyEditPlan.prepare(
+                project,
+                declaration(source, first),
+                new UnifiedCoordinates("g", "a", "1"),
+                remove
+              )
+              val owner    = com.intellij.openapi.util.Disposer.newDisposable()
+              val existing = com.intellij.openapi.editor.EditorFactory.getInstance().getAllEditors.toSet
+              try {
+                DependencyEditPlan.previewComponent(plan, owner)
+                val editors = com.intellij.openapi.editor.EditorFactory.getInstance().getAllEditors.filterNot(existing)
+                assert(editors.length == 2)
+                assert(
+                  editors.forall(_.getColorsScheme.getDefaultBackground == scheme.getDefaultBackground),
+                  s"Diff background must follow $name for remove=$remove"
+                )
+                assert(editors.forall(_.getColorsScheme.getDefaultForeground == scheme.getDefaultForeground))
+              } finally com.intellij.openapi.util.Disposer.dispose(owner)
+            }
+          }
+        } finally colors.setGlobalScheme(previous)
+      }
       check("stale edit preview cannot overwrite a newer document") {
         val d        = declaration(source, first)
         val plan     = DependencyEditPlan.prepare(project, d, new UnifiedCoordinates("g", "a", "1"), true)
