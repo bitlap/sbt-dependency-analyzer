@@ -9,7 +9,8 @@ object SbtDependencyAnalyzerPlugin {
 
   val PLUGIN_ID = "org.bitlap.sbtDependencyAnalyzer"
 
-  val details: PluginDetails = Option(PluginDetailsService.getInstance().findDetails(PluginId.getId(PLUGIN_ID)))
+  /** Queries metadata on demand; object initialization must never request an application service. */
+  def details: PluginDetails = Option(PluginDetailsService.getInstance().findDetails(PluginId.getId(PLUGIN_ID)))
     .getOrElse(throw new IllegalStateException(s"Plugin $PLUGIN_ID not found"))
 
 }
