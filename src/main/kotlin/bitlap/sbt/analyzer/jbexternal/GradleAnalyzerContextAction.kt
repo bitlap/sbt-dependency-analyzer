@@ -60,6 +60,7 @@ class GradleAnalyzerContextAction : DependencyAnalyzerAction(), OverridingAction
         original.setSelectedState(view, e)
 
     override fun actionPerformed(e: AnActionEvent) {
-        if (!isSbtContext(e)) original.actionPerformed(e)
+        // Let the platform action invoke our delegated system/selection hooks.
+        if (!isSbtContext(e)) super.actionPerformed(e)
     }
 }

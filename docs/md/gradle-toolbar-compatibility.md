@@ -29,3 +29,5 @@ sbt test psiTest gradleAnalyzerTest
 合并验证的 Plugin Verifier 结果为 `Compatible`：19 处弃用、45 处实验性、21 处内部 API 引用，以及 1 处 `OverrideOnly` 使用提示。后者来自兼容包装器委托官方 `actionPerformed`，是该实现现有的平台 API 使用边界；本次冲突解决未修改此委托逻辑。
 
 2026-10-27 补齐右键入口后：73 项单测、81 项核心 IDEA 检查通过；Gradle 启用时 386 项、禁用时 5 项兼容检查通过，包含无构建系统 ID 的模块和节点上下文、三个右键菜单组以及项目树菜单引用、两轮卸载恢复和重载。Plugin Verifier 仍为 `Compatible`，API 使用提示数量与上述合并验证一致。
+
+2026-10-29 升级 IDEA 2026.2.3 后，包装器改为通过平台父类执行动作，并委托构建系统及选中状态 hook，消除上述 `OverrideOnly` 违规。Gradle 启用 434 项、禁用 5 项检查通过；完整结果见 [升级验证记录](idea-2026.2.3-compatibility.md)。

@@ -13,7 +13,7 @@ lazy val ktVersion             = "2.3.0"
 lazy val jbAnnotVersion        = "26.0.2"
 
 // Override IDEA_BUILD to validate another IntelliJ platform explicitly.
-lazy val intellijVersion = sys.env.getOrElse("IDEA_BUILD", "261.25134.95")
+lazy val intellijVersion = sys.env.getOrElse("IDEA_BUILD", "262.10968.63")
 lazy val pluginVersion   = "0.12.0"
 
 lazy val gradleAnalyzerTest =
@@ -114,7 +114,7 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
     ThisBuild / autoRemoveOldCachedIntelliJSDK := false,
     Global / intellijAttachSources             := true,
     buildIntellijOptionsIndex                  := {},
-    intellijPlugins ++= Seq("com.intellij.java", "org.intellij.scala").map(_.toPlugin),
+    intellijPlugins ++= Seq("com.intellij.java", "intellij.testRunner.plugin", "org.intellij.scala").map(_.toPlugin),
     useNewVmOptions         := true,
     customIntellijVMOptions := customIntellijVMOptions.value.copy(
       xmx = Some(2048),

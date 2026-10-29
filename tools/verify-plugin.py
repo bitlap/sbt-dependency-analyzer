@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
-sdk = Path(os.environ.get("IDE_HOME", Path.home() / ".SbtDependencyAnalyzerPluginIC/sdk" / os.environ.get("IDEA_BUILD", "261.25134.95"))).resolve()
+sdk = Path(os.environ.get("IDE_HOME", Path.home() / ".SbtDependencyAnalyzerPluginIC/sdk" / os.environ.get("IDEA_BUILD", "262.10968.63"))).resolve()
 plugin = Path(os.environ.get("PLUGIN_DIR", root / "target/plugin/SbtDependencyAnalyzer")).resolve()
 work = root / "target/verifier"
 version = os.environ.get("VERIFIER_VERSION", "1.402")

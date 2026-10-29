@@ -46,6 +46,21 @@ object AnalyzerSmokeStarterCore {
       override def call(): A = body
     })
 
+  /** Perform source-action lookups under the same smart read access used by background action updates. */
+  private[analyzer] def smartRead[A](project: Project)(body: => A): A = {
+    val result = background {
+      com.intellij.openapi.project.DumbService
+        .getInstance(project)
+        .runReadActionInSmartMode(
+          new com.intellij.openapi.util.Computable[A] { override def compute(): A = body }
+        )
+    }
+    try {
+      eventually("smart-mode read completes")(result.isDone)
+      result.get(8, TimeUnit.SECONDS)
+    } finally if (!result.isDone) result.cancel(true)
+  }
+
   private[analyzer] def field[A](target: AnyRef, name: String): A = {
     val f = target.getClass.getDeclaredField(name)
     f.setAccessible(true)
@@ -215,6 +230,70 @@ object AnalyzerSmokeStarterCore {
         task.executeForModule(project, ref.selector)
         assert(commands.contains(s"set ${ref.settingReference} / update / skip := false"))
         assert(entries.toMap == Map(1 -> "existingUserSetting := true"))
+      }
+    )
+
+    check(
+      "Scala plugin registers the project shell request submitter without launching a command",
+      () => {
+        val submitter = org.jetbrains.sbt.shell.communication.SbtShellCommandSubmitter.instance(project)
+        assert(submitter != null && submitter.isInstanceOf[org.jetbrains.sbt.shell.SbtShellCommunication])
+      }
+    )
+
+    check(
+      "new shell requests preserve external project scope and successful completion",
+      () => {
+        import org.jetbrains.sbt.shell.communication.ShellEvent
+        import bitlap.sbt.analyzer.task.SbtShellDependencyAnalysisTask
+        import bitlap.sbt.analyzer.parsing.DependencyGraphType
+        val selector = "{file:/external%20build/}core-js"
+        val request  =
+          SbtShellDependencyAnalysisTask.commandRequest(selector, DependencyScopeEnum.Test, DependencyGraphType.Dot)
+        assert(request.sbtCommandText == s"$selector / Test / dependencyDot")
+        val processor = request.shellEventProcessor
+        val result    =
+          Seq(ShellEvent.TaskStart, ShellEvent.Output("[info] Wrote dependency graph"), ShellEvent.TaskComplete)
+            .foldLeft(processor.initialResult)((state, event) => processor.process(state, event))
+        assert(result.isEmpty)
+        assert(
+          SbtShellDependencyAnalysisTask
+            .commandRequest("", DependencyScopeEnum.Compile, DependencyGraphType.Dot)
+            .sbtCommandText == "Compile / dependencyDot"
+        )
+      }
+    )
+
+    check(
+      "new shell requests retain the first error through completion and reject terminated commands",
+      () => {
+        import org.jetbrains.sbt.shell.communication.ShellEvent
+        import bitlap.sbt.analyzer.task.SbtShellDependencyAnalysisTask
+        import bitlap.sbt.analyzer.parsing.DependencyGraphType
+        import bitlap.sbt.analyzer.model.{ AnalyzerCommandNotFoundException, AnalyzerCommandUnknownException }
+        val events = Seq(
+          ShellEvent.Output("[error] Not a valid key: dependencyDot"),
+          ShellEvent.Output("[error] Failed resolving dependencies"),
+          ShellEvent.ErrorWaitForInput,
+          ShellEvent.ProcessTerminated
+        )
+        for (event <- events) {
+          val request =
+            SbtShellDependencyAnalysisTask.commandRequest("core-js", DependencyScopeEnum.Test, DependencyGraphType.Dot)
+          val processor = request.shellEventProcessor
+          val error     = processor.process(processor.initialResult, event)
+          assert(error.nonEmpty)
+          if (event == events.head) assert(error.get.isInstanceOf[AnalyzerCommandNotFoundException])
+          else {
+            val unknown = error.get.asInstanceOf[AnalyzerCommandUnknownException]
+            assert(
+              unknown.moduleId == "core-js" && unknown.scope == DependencyScopeEnum.Test && unknown.command == "dependencyDot"
+            )
+          }
+          assert(processor.process(error, ShellEvent.Output("[error] Another failure")).get eq error.get)
+          assert(processor.process(error, ShellEvent.TaskComplete).get eq error.get)
+          assert(processor.initialResult.isEmpty)
+        }
       }
     )
 

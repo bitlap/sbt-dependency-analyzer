@@ -163,6 +163,24 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
               check(label + " official visibility preserved", event.getPresentation().isVisible() == originalEvent.getPresentation().isVisible());
               check(label + " official enabled state preserved", event.getPresentation().isEnabled() == originalEvent.getPresentation().isEnabled());
             }
+            if ("GRADLE".equals(system)) {
+              var wrappedAction = (com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerAction) action;
+              var originalAction = (com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerAction) base;
+              check(label + " platform system hook preserved", java.util.Objects.equals(
+                  wrappedAction.getSystemId(event), originalAction.getSystemId(originalEvent)));
+              var calls = new java.util.ArrayList<Object>();
+              var viewProxy = (com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView) java.lang.reflect.Proxy.newProxyInstance(
+                  getClass().getClassLoader(), new Class[]{com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView.class},
+                  (proxy, method, args) -> {
+                    calls.add(java.util.List.of(method.getName(), args == null ? java.util.List.of() : java.util.Arrays.asList(args)));
+                    return null;
+                  });
+              originalAction.setSelectedState(viewProxy, originalEvent);
+              var expected = java.util.List.copyOf(calls);
+              calls.clear();
+              wrappedAction.setSelectedState(viewProxy, event);
+              check(label + " platform selection hook preserved", calls.equals(expected));
+            }
             check(label + " text and icon preserved", event.getPresentation().getText().equals(originalEvent.getPresentation().getText()) &&
                 event.getPresentation().getIcon().equals(originalEvent.getPresentation().getIcon()));
           }

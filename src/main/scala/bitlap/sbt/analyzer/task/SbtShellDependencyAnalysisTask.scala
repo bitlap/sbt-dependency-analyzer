@@ -5,9 +5,12 @@ package task
 
 import java.nio.file.Path
 
-import scala.concurrent.*
-
-import org.jetbrains.sbt.shell.SbtShellCommunication
+import org.jetbrains.sbt.shell.communication.{
+  SbtShellCommandEventProcessor,
+  SbtShellCommandRequest,
+  SbtShellCommandSubmitter,
+  ShellEvent
+}
 
 import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.model.project.dependencies.DependencyScopeNode
@@ -40,10 +43,8 @@ trait SbtShellDependencyAnalysisTask:
     moduleData: ModuleData,
     scope: DependencyScopeEnum
   )(buildNodeFunc: String => DependencyScopeNode): DependencyScopeNode = {
-    val shellCommunication = SbtShellCommunication.forProject(project)
-    val moduleId           = sbtProjectSelector(project, moduleData)
-    val promise            = Promise[Boolean]()
-    val file               = moduleData.getLinkedExternalProjectPath + analysisFilePath(scope, dependencyGraphType)
+    val moduleId = sbtProjectSelector(project, moduleData)
+    val file     = moduleData.getLinkedExternalProjectPath + analysisFilePath(scope, dependencyGraphType)
 
     AnalyzerCacheService.getInstance(project).trackAnalysisFile(file)
     val ttl  = SettingsState.getSettings(project).fileCacheTimeout.toLong * 1000
@@ -56,51 +57,10 @@ trait SbtShellDependencyAnalysisTask:
     AnalyzerCacheService.getInstance(project).dotFiles.invalidateCache(file)
 
     val result = SbtTaskRunner.submit(project) {
-      shellCommunication
-        .command(
-          getScopedCommandKey(moduleId, scope, dependencyGraphType.cmd),
-          new StringBuilder(),
-          SbtShellCommunication.listenerAggregator {
-            case SbtShellCommunication.TaskComplete =>
-              if (!promise.isCompleted) {
-                promise.success(true)
-              }
-            case SbtShellCommunication.ErrorWaitForInput =>
-              if (!promise.isCompleted) {
-                promise.failure(
-                  AnalyzerCommandUnknownException(
-                    dependencyGraphType.cmd,
-                    moduleId,
-                    scope,
-                    SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
-                  )
-                )
-              }
-            case SbtShellCommunication.Output(line) =>
-              if (
-                line.startsWith(SbtShellDependencyAnalysisTask.ERROR_PREFIX) && line
-                  .contains(dependencyGraphType.cmd) && !promise.isCompleted
-              ) {
-                promise.failure(
-                  AnalyzerCommandNotFoundException(
-                    SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
-                  )
-                )
-              } else if (line.startsWith(SbtShellDependencyAnalysisTask.ERROR_PREFIX) && !promise.isCompleted) {
-                promise.failure(
-                  AnalyzerCommandUnknownException(
-                    dependencyGraphType.cmd,
-                    moduleId,
-                    scope,
-                    SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
-                  )
-                )
-              }
-            case _ =>
-
-          }
-        )
-        .flatMap(_ => promise.future)
+      SbtShellCommandSubmitter
+        .instance(project)
+        .run(SbtShellDependencyAnalysisTask.commandRequest(moduleId, scope, dependencyGraphType))
+        .map(_.foreach(error => throw error))
     }
 
     SbtTaskRunner.await(project, result)
@@ -110,6 +70,35 @@ trait SbtShellDependencyAnalysisTask:
 end SbtShellDependencyAnalysisTask
 
 object SbtShellDependencyAnalysisTask:
+
+  /** The shell future completes at the command boundary; retain the first reported failure until then. */
+  private[analyzer] def commandRequest(
+    moduleId: String,
+    scope: DependencyScopeEnum,
+    graphType: DependencyGraphType
+  ): SbtShellCommandRequest[Option[AnalyzerException]] = {
+    def unknown = AnalyzerCommandUnknownException(
+      graphType.cmd,
+      moduleId,
+      scope,
+      SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")
+    )
+    val processor = new SbtShellCommandEventProcessor[Option[AnalyzerException]] {
+      override def initialResult: Option[AnalyzerException]                                                  = None
+      override def process(current: Option[AnalyzerException], event: ShellEvent): Option[AnalyzerException] =
+        current.orElse {
+          event match {
+            case ShellEvent.ErrorWaitForInput | ShellEvent.ProcessTerminated => Some(unknown)
+            case ShellEvent.Output(line) if line.startsWith(ERROR_PREFIX)    =>
+              if (line.contains(graphType.cmd))
+                Some(AnalyzerCommandNotFoundException(SbtDependencyAnalyzerBundle.message("analyzer.task.error.title")))
+              else Some(unknown)
+            case _ => None
+          }
+        }
+    }
+    SbtShellCommandRequest(getScopedCommandKey(moduleId, scope, graphType.cmd), processor)
+  }
   private val ERROR_PREFIX                                   = "[error]"
   lazy val dependencyDotTask: SbtShellDependencyAnalysisTask = new DependencyDotTask
 
