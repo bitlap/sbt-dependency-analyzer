@@ -44,5 +44,11 @@ args = [str(java), "-Xmx2048m", "-Djava.awt.headless=true", "-Didea.platform.pre
         f"-Danalyzer.smoke.output={output}", "-Djb.consents.confirmation.enabled=false"]
 args.extend(value.replace("$APP_PACKAGE", str(sdk)).replace("$IDE_HOME", str(sdk)) for value in launch.get("additionalJvmArguments", []))
 args += ["-cp", os.pathsep.join(str(sdk / "lib" / name) for name in launch["bootClassPathJarNames"]), "com.intellij.idea.Main", "analyzer-smoke"]
-result = subprocess.run(args, cwd=root, timeout=180)
+result = subprocess.run(args, cwd=root, timeout=180, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+print(result.stdout, end="")
+# Swing may print an Error and continue; functional assertions alone must not turn a broken UI run green.
+startup_errors = ("no ComponentUI class for:", "Class initialization must not depend on services")
+if any(message in result.stdout for message in startup_errors):
+    print("IDE smoke checks rejected: UI delegate or service initialization error", file=sys.stderr)
+    sys.exit(1)
 sys.exit(result.returncode)

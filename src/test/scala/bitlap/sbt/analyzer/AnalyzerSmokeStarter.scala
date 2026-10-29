@@ -35,6 +35,12 @@ class AnalyzerSmokeStarter extends ApplicationStarter {
       results.append(f"PASS $name ${(System.nanoTime() - start) / 1000000.0}%.2f ms\n")
     }
     try {
+      check("headless IDE initializes native look and feel before creating diff components") {
+        // The headless LafManager deliberately skips full theme installation.
+        UIManager.setLookAndFeel(new com.intellij.ide.ui.laf.darcula.DarculaLaf)
+        com.intellij.ui.JBColor.setDark(true)
+        assert(UIManager.getDefaults.get("Diff.HeaderToolbarPanelUI") != null, "Native diff UI delegate is missing")
+      }
       ScalaOptionCompatibilityChecks.run((name, passed) => check(name) { assert(passed) })
       val projectPath =
         Files.createTempDirectory(Path.of(System.getProperty("idea.system.path")), "regression-project-")
