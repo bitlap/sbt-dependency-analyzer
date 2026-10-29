@@ -114,7 +114,12 @@ lazy val `sbt-dependency-analyzer` = (project in file("."))
     ThisBuild / autoRemoveOldCachedIntelliJSDK := false,
     Global / intellijAttachSources             := true,
     buildIntellijOptionsIndex                  := {},
-    intellijPlugins ++= Seq("com.intellij.java", "intellij.testRunner.plugin", "org.intellij.scala").map(_.toPlugin),
+    intellijPlugins ++= Seq(
+      "com.intellij.java",
+      "intellij.testRunner.plugin",
+      "org.intellij.scala",
+      "com.intellij.gradle"
+    ).map(_.toPlugin),
     useNewVmOptions         := true,
     customIntellijVMOptions := customIntellijVMOptions.value.copy(
       xmx = Some(2048),

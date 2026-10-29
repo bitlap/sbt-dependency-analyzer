@@ -36,7 +36,7 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
 
   private void contexts(ActionManager manager) {
     AnAction action = manager.getAction(ACTION);
-    check("override is registered", action != null && action.getClass().getName().equals(WRAPPER));
+    check("override is registered", action != null && action.getClass().getName().equals(WRAPPER + "$Toolbar"));
     for (String system : new String[]{"SBT", "GRADLE", "MAVEN", null}) {
       AnActionEvent e = event(system);
       action.update(e);
@@ -139,7 +139,7 @@ public final class GradleAnalyzerCompatibilityStarter implements ApplicationStar
           new com.intellij.openapi.externalSystem.model.DataNode<>(com.intellij.openapi.externalSystem.model.ProjectKeys.PROJECT, pd, null));
       for (String actionId : new String[]{"Gradle.ViewDependencyAnalyzer", "Gradle.ProjectViewDependencyAnalyzer"}) {
         AnAction action = manager.getAction(actionId);
-        check(actionId + " popup override registered", action != null && action.getClass().getName().equals(WRAPPER));
+        check(actionId + " popup override registered", action != null && action.getClass().getName().equals(WRAPPER + (actionId.equals("Gradle.ViewDependencyAnalyzer") ? "$View" : "$ProjectView")));
         AnAction base = official(manager, action);
         for (var selected : java.util.Arrays.asList(node, child, projectNode, null)) {
           for (String system : new String[]{"SBT", "GRADLE", "MAVEN", null}) {

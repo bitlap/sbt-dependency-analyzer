@@ -50,7 +50,7 @@ object PluginUpdateActivity {
   ): Unit = {
     if (project.isDisposed) return
     // Reserve on the EDT before launching asynchronously to deduplicate simultaneous project openings.
-    val plugin     = SbtDependencyAnalyzerPlugin.descriptor
+    val plugin     = SbtDependencyAnalyzerPlugin.details
     val properties = PropertiesComponent.getInstance()
     val current    = plugin.getVersion
     if (UpdatePagePolicy.shouldShow(current, properties.getValue(VersionProperty)) && pending.add(current)) {

@@ -98,7 +98,7 @@ object AnalyzerSmokeStarterWhatsNew {
           finish(true)
           PluginUpdateActivity.checkUpdate(project, open)
           assert(attempts == 2)
-          assert(properties.getValue(key) == SbtDependencyAnalyzerPlugin.descriptor.getVersion)
+          assert(properties.getValue(key) == SbtDependencyAnalyzerPlugin.details.getVersion)
         } finally {
           if (previous == null) properties.unsetValue(key) else properties.setValue(key, previous)
         }

@@ -1,12 +1,8 @@
 package bitlap.sbt.analyzer.jbexternal
 
-import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.actionSystem.ActionStub
 import com.intellij.openapi.actionSystem.LangDataKeys
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.OverridingAction
-import com.intellij.openapi.actionSystem.impl.ActionManagerImpl
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerAction
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView
 import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys
@@ -14,25 +10,22 @@ import com.intellij.openapi.externalSystem.model.ProjectSystemId
 import com.intellij.openapi.externalSystem.model.project.AbstractExternalEntityData
 import com.intellij.openapi.externalSystem.view.ExternalSystemNode
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
+import org.jetbrains.plugins.gradle.dependency.analyzer.ToolbarDependencyAnalyzerAction
+import org.jetbrains.plugins.gradle.dependency.analyzer.ViewDependencyAnalyzerAction
+import org.jetbrains.plugins.gradle.dependency.analyzer.ProjectViewDependencyAnalyzerAction
 
 /**
  * Keeps Gradle's toolbar and popup entries out of sbt contexts without changing their other contexts.
  * The optional descriptor declares the override so the platform owns action-group replacement and unload restoration.
- * Base-action lookup is confined here because the platform currently exposes it through ActionManagerImpl.
+ * Each optional registration delegates to its corresponding public Gradle action. The platform retains the original
+ * registration for unload restoration; no base-action lookup or lazy ActionStub instantiation is needed.
  */
-class GradleAnalyzerContextAction : DependencyAnalyzerAction(), OverridingAction {
+abstract class GradleAnalyzerContextAction(private val original: DependencyAnalyzerAction) :
+    DependencyAnalyzerAction(), OverridingAction {
 
-    // Declarative overrides can retain a lazy ActionStub as their base. Instantiate it through its owning plugin,
-    // leaving the platform's original registration intact so unload can restore it normally.
-    private val original: DependencyAnalyzerAction by lazy {
-        val base = requireNotNull((ActionManager.getInstance() as ActionManagerImpl).getBaseAction(this))
-        if (base is ActionStub) {
-            ApplicationManager.getApplication().instantiateClass<DependencyAnalyzerAction>(base.className, base.plugin)
-                .also { base.initAction(it) }
-        } else {
-            base as DependencyAnalyzerAction
-        }
-    }
+    class Toolbar : GradleAnalyzerContextAction(ToolbarDependencyAnalyzerAction())
+    class View : GradleAnalyzerContextAction(ViewDependencyAnalyzerAction())
+    class ProjectView : GradleAnalyzerContextAction(ProjectViewDependencyAnalyzerAction())
 
     private fun isSbtContext(e: AnActionEvent): Boolean {
         e.getData(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID)?.let { return it.id == "SBT" }

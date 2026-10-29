@@ -73,7 +73,7 @@ object WhatsNew {
     val title = SbtDependencyAnalyzerBundle.message("analyzer.action.whatsNew.text", "Sbt Dependency Analyzer")
     val html  = pageHtml(
       title,
-      SbtDependencyAnalyzerPlugin.descriptor.getChangeNotes,
+      SbtDependencyAnalyzerPlugin.details.getChangeNotes,
       getReleaseNotes(version),
       version.presentation
     )
