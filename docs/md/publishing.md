@@ -65,3 +65,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/test-upload-plugin.py
 ```
 
 测试使用临时插件包及假的 sbt 可执行文件，验证版本和更新说明、默认不发布、签名包固定、Stable/自定义渠道、含空格和引号的路径、令牌文件优先级、签名及上传失败、日志脱敏和不重试。测试不会向 Marketplace 发送请求。
+
+## GitHub Release
+
+Marketplace 上传与 GitHub Release 是两个独立操作。Release Drafter 在 master 更新时读取并校验项目版本和 change-notes，草稿标题和标签统一为 `v<pluginVersion>`，不再依据 PR 标签推算版本。已有正式发布的版本保持不变，避免后续合并生成同版本草稿。
+
+正式发布可在 GitHub Actions 的 Release Drafter 中选择 master，手动运行并勾选 `publish`，或在 Releases 页面审核草稿、附上已验签的分发 ZIP 后发布。普通 push 只维护草稿；不会自动再次上传 Marketplace。发布资产应使用同一次 Marketplace 上传的签名包。
