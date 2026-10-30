@@ -58,6 +58,8 @@ jobs:
         run: |
           bash -n tools/upload-plugin.sh
           PYTHONDONTWRITEBYTECODE=1 python3 tools/test-upload-plugin.py
+      - name: Test GitHub release guards (offline)
+        run: node --test tools/test-release-drafter.cjs
       - name: Verify real sbt workflows
         run: python3 tools/test-sbt-workflows.py
   

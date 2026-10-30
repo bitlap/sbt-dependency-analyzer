@@ -3,11 +3,48 @@ name: Release Drafter
 on:
   push:
     branches: ['master']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the current project version instead of only updating its draft'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-drafter-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   update_release_draft:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+      - name: Validate project release version and change notes
+        id: release
+        shell: bash
+        run: |
+          version=$(python3 tools/validate-plugin-release.py --version-only)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Preserve an already published version
+        id: status
+        uses: actions/github-script@v8
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        with:
+          script: |
+            const check = require('./.github/scripts/release-status.cjs');
+            await check({github, context, core, version: process.env.RELEASE_VERSION});
       - uses: release-drafter/release-drafter@v7
+        if: steps.status.outputs.should-draft == 'true'
+        with:
+          version: ${{ steps.release.outputs.version }}
+          name: v${{ steps.release.outputs.version }}
+          tag: v${{ steps.release.outputs.version }}
+          publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
