@@ -21,7 +21,7 @@ jobs:
           java-version: 25
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v8
+      - uses: coursier/cache-action@v9
       - name: Build
         run: sbt compile
 
@@ -36,7 +36,7 @@ jobs:
           java-version: 25
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v8
+      - uses: coursier/cache-action@v9
       - name: Check Style
         run: sbt check
   
@@ -51,7 +51,7 @@ jobs:
           java-version: 25
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v8
+      - uses: coursier/cache-action@v9
       - name: Test
         run: sbt test psiTest gradleAnalyzerTest
       - name: Test Marketplace shell uploader (offline)
@@ -74,7 +74,7 @@ jobs:
           java-version: 25
           cache: sbt
       - uses: sbt/setup-sbt@v1
-      - uses: coursier/cache-action@v8
+      - uses: coursier/cache-action@v9
       - name: Check Binary Compatibility
         run: sbt runPluginVerifier
   
